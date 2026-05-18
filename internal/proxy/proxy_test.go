@@ -406,7 +406,7 @@ func TestConcurrentReasoningCache(t *testing.T) {
 			defer wg.Done()
 			id := fmt.Sprintf("call_%d", i)
 			srv.setReasoningLocked(id, fmt.Sprintf("thinking_%d", i))
-			if got := srv.reasoningByTool[id]; got != fmt.Sprintf("thinking_%d", i) {
+			if got := srv.getReasoningLocked(id); got != fmt.Sprintf("thinking_%d", i) {
 				t.Errorf("reasoning mismatch for %s: got %q", id, got)
 			}
 		}(i)

@@ -347,6 +347,12 @@ func (s *Server) setReasoningLocked(id, reasoning string) {
 	s.setReasoning(id, reasoning)
 }
 
+func (s *Server) getReasoningLocked(id string) string {
+	s.reasoningMu.Lock()
+	defer s.reasoningMu.Unlock()
+	return s.reasoningByTool[id]
+}
+
 func (s *Server) profileFromRequest(r *http.Request) (config.Profile, string, error) {
 	name := strings.TrimSpace(r.Header.Get("X-Ocgt-Profile"))
 	if name == "" {
