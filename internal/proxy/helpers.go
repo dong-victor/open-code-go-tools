@@ -61,12 +61,12 @@ func estimateTokens(payload anthropicRequest) int {
 	for _, tool := range payload.Tools {
 		text += "\n" + tool.Name + ":" + tool.Description
 	}
-	// CJK characters typically use 2-3 tokens each vs ~0.25 for ASCII.
+	// CJK characters typically use 2-3 tokens each vs ~4 chars per token for ASCII.
 	// Count non-ASCII runes more heavily.
 	tokenEstimate := 0
 	for _, r := range text {
 		if r > 127 {
-			tokenEstimate += 2 // CJK characters roughly 2 tokens each
+			tokenEstimate += 3 // CJK characters roughly 2-3 tokens each
 		} else {
 			tokenEstimate++ // ASCII characters, ~4 per token
 		}

@@ -405,7 +405,7 @@ func TestConcurrentReasoningCache(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			id := fmt.Sprintf("call_%d", i)
-			srv.setReasoning(id, fmt.Sprintf("thinking_%d", i))
+			srv.setReasoningLocked(id, fmt.Sprintf("thinking_%d", i))
 			if got := srv.reasoningByTool[id]; got != fmt.Sprintf("thinking_%d", i) {
 				t.Errorf("reasoning mismatch for %s: got %q", id, got)
 			}
@@ -666,7 +666,7 @@ func TestDeepSeekToolRequestDisablesThinkingAndReplaysReasoning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv.setReasoning("call_1", "private reasoning")
+	srv.setReasoningLocked("call_1", "private reasoning")
 	body := []byte(`{"model":"deepseek-v4-pro","max_tokens":16,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"list_files","input":{"path":"."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":"README.md"}]}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -811,7 +811,7 @@ func TestReasoningLRUEviction(t *testing.T) {
 	}
 	for i := 0; i < maxReasoningEntries+10; i++ {
 		id := fmt.Sprintf("call_%d", i)
-		srv.setReasoning(id, "thinking")
+		srv.setReasoningLocked(id, "thinking")
 	}
 	if len(srv.reasoningByTool) > maxReasoningEntries {
 		t.Fatalf("reasoningByTool has %d entries, expected <= %d", len(srv.reasoningByTool), maxReasoningEntries)
