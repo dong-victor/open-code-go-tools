@@ -497,6 +497,43 @@ func TestUpstreamErrorForwarding(t *testing.T) {
 	}
 }
 
+func TestUpstreamErrorHistoryIncludesReason(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":{"type":"bad_gateway","message":"upstream temporarily unavailable"}}`))
+	}))
+	defer upstream.Close()
+
+	srv, err := New(config.Config{
+		Listen:        "127.0.0.1:0",
+		Upstream:      upstream.URL,
+		ActiveProfile: "test",
+		Profiles: map[string]config.Profile{
+			"test": {APIKey: "test-key", DefaultModel: "kimi-k2.6"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := []byte(`{"model":"kimi-k2.6","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rr.Code)
+	}
+	if len(srv.history) != 1 {
+		t.Fatalf("history len = %d", len(srv.history))
+	}
+	if srv.history[0].Error != "upstream temporarily unavailable" {
+		t.Fatalf("history error = %q", srv.history[0].Error)
+	}
+}
+
 // ----- Models endpoint test -----
 
 func TestModelsEndpointFallback(t *testing.T) {
@@ -978,7 +1015,7 @@ func TestUpstreamErrorNoBody(t *testing.T) {
 
 func TestFinishReason(t *testing.T) {
 	tests := []struct {
-		reason string
+		reason  string
 		hasTool bool
 		want    string
 	}{
@@ -1000,11 +1037,11 @@ func TestFinishReason(t *testing.T) {
 
 func TestWithoutContent(t *testing.T) {
 	msg := map[string]any{
-		"id":       "msg_1",
-		"type":     "message",
-		"role":     "assistant",
-		"content":  []any{map[string]any{"type": "text", "text": "hello"}},
-		"model":    "kimi-k2.6",
+		"id":          "msg_1",
+		"type":        "message",
+		"role":        "assistant",
+		"content":     []any{map[string]any{"type": "text", "text": "hello"}},
+		"model":       "kimi-k2.6",
 		"stop_reason": "end_turn",
 	}
 	out := withoutContent(msg)

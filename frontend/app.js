@@ -547,7 +547,7 @@ function renderHistoryTable(logs) {
     updateTrafficStats(logs);
 
     if (!logs || logs.length === 0) {
-        tbodyHistory.innerHTML = `<tr class="empty-row"><td colspan="6"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>暂无流量记录。请使用一键终端或在其他 Shell 中向代理发送请求...</div></td></tr>`;
+        tbodyHistory.innerHTML = `<tr class="empty-row"><td colspan="7"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>暂无流量记录。请使用一键终端或在其他 Shell 中向代理发送请求...</div></td></tr>`;
         return;
     }
     tbodyHistory.innerHTML = logs.map(log => {
@@ -560,8 +560,18 @@ function renderHistoryTable(logs) {
             <td class="model-cell">${log.model || '-'}</td>
             <td>${badge}</td>
             <td class="duration-cell">${log.duration}</td>
+            <td class="error-cell" title="${escapeHtml(log.error || '')}">${escapeHtml(log.error || '-')}</td>
         </tr>`;
     }).join('');
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function updateTrafficStats(logs) {

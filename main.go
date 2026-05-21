@@ -27,7 +27,7 @@ import (
 //go:embed all:frontend
 var assets embed.FS
 
-var version = "0.1.1"
+var version = "0.1.2"
 
 func main() {
 	args := os.Args[1:]

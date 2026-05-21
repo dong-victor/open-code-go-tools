@@ -93,6 +93,13 @@ jobs:
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
+          name: ocgt ${{ github.ref_name }} GUI
+          body: |
+            This release publishes the Wails GUI client for ocgt.
+
+            Download the asset for your platform, run it directly, then use the GUI to save your OpenCode Go key, repair Claude Code environment variables, and launch a configured terminal.
+
+            Windows users should normally download `ocgt-windows-amd64.exe`.
           files: |
             dist/*
           generate_release_notes: true

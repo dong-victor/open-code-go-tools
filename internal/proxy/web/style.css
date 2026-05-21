@@ -586,7 +586,7 @@ code {
 
 .history-table {
     width: 100%;
-    min-width: 760px;
+    min-width: 900px;
     border-collapse: collapse;
     text-align: left;
     font-size: 0.9rem;
@@ -622,6 +622,14 @@ code {
 .font-mono {
     font-family: var(--font-mono);
     font-size: 0.85rem;
+}
+
+.error-cell {
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-secondary);
 }
 
 /* HTTP 状态码徽章系统 */

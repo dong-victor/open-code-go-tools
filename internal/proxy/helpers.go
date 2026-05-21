@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -107,6 +108,45 @@ func writeUpstreamError(w http.ResponseWriter, status int, body []byte) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_, _ = w.Write(body)
+}
+
+func upstreamErrorSummary(status int, body []byte) string {
+	if len(body) == 0 {
+		return fmt.Sprintf("upstream returned %d", status)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err == nil {
+		if msg := nestedString(raw, "error", "message"); msg != "" {
+			return msg
+		}
+		if msg := nestedString(raw, "error", "type"); msg != "" {
+			return msg
+		}
+		if msg, _ := raw["message"].(string); msg != "" {
+			return msg
+		}
+		if msg, _ := raw["error"].(string); msg != "" {
+			return msg
+		}
+	}
+	text := strings.TrimSpace(string(body))
+	if len(text) > 240 {
+		text = text[:240] + "..."
+	}
+	return text
+}
+
+func nestedString(raw map[string]any, keys ...string) string {
+	var cur any = raw
+	for _, key := range keys {
+		obj, ok := cur.(map[string]any)
+		if !ok {
+			return ""
+		}
+		cur = obj[key]
+	}
+	value, _ := cur.(string)
+	return value
 }
 
 func requestLogger(next http.Handler) http.Handler {

@@ -172,8 +172,10 @@ func (a *App) InstallClaudeUserEnv() string {
 		"OCGT_PROFILE":                               activeProfile,
 	}
 
-	if err := unsetUserEnvironment("ANTHROPIC_AUTH_TOKEN"); err != nil {
-		return "unset ANTHROPIC_AUTH_TOKEN error: " + err.Error()
+	for _, name := range legacyClaudeEnvNames() {
+		if err := unsetUserEnvironment(name); err != nil {
+			return "unset " + name + " error: " + err.Error()
+		}
 	}
 	for name, value := range env {
 		if err := setUserEnvironment(name, value); err != nil {
@@ -258,6 +260,18 @@ func unsetUserEnvironment(name string) error {
 	}
 }
 
+func legacyClaudeEnvNames() []string {
+	return []string{
+		"ANTHROPIC_AUTH_TOKEN",
+		"ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+		"ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+		"ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+		"ANTHROPIC_DEFAULT_SONNET_MODEL",
+		"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+		"ANTHROPIC_DEFAULT_OPUS_MODEL",
+	}
+}
+
 // OpenConfigLocation opens the directory containing the config file
 func (a *App) OpenConfigLocation() string {
 	path, err := config.DefaultPath()
@@ -315,18 +329,13 @@ func syncClaudeSettings(env map[string]string, defaultModel string) error {
 	if envMap == nil {
 		envMap = map[string]any{}
 	}
-	delete(envMap, "ANTHROPIC_AUTH_TOKEN")
-	// Clean up legacy custom model name keys to prevent stale astron-code-latest models from displaying
-	delete(envMap, "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME")
-	delete(envMap, "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME")
-	delete(envMap, "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME")
+	for _, name := range legacyClaudeEnvNames() {
+		delete(envMap, name)
+	}
 
 	for key, value := range env {
 		envMap[key] = value
 	}
-	envMap["ANTHROPIC_DEFAULT_SONNET_MODEL"] = defaultModel
-	envMap["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = "deepseek-v4-flash"
-	envMap["ANTHROPIC_DEFAULT_OPUS_MODEL"] = "kimi-k2.6"
 	settings["env"] = envMap
 
 	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o700); err != nil {

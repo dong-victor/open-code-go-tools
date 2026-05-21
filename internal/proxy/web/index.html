@@ -22,7 +22,7 @@
                     </svg>
                 </div>
                 <div class="brand-text">
-                    <h1>ocgt <span class="badge">v0.1.0</span></h1>
+                    <h1>ocgt <span class="badge">v0.1.2</span></h1>
                     <p>Claude Code & OpenCode Go Proxy</p>
                 </div>
             </div>
@@ -183,17 +183,18 @@ $env:ANTHROPIC_MODEL = "kimi-k2.6"</code></pre>
                 <table class="history-table">
                     <thead>
                         <tr>
-                            <th style="width: 15%;">发起时间</th>
-                            <th style="width: 10%;">请求方法</th>
-                            <th style="width: 25%;">API 路径</th>
-                            <th style="width: 25%;">路由目标模型</th>
-                            <th style="width: 13%;">HTTP 状态</th>
-                            <th style="width: 12%;">响应时间</th>
+                            <th style="width: 13%;">发起时间</th>
+                            <th style="width: 9%;">请求方法</th>
+                            <th style="width: 20%;">API 路径</th>
+                            <th style="width: 20%;">路由目标模型</th>
+                            <th style="width: 11%;">HTTP 状态</th>
+                            <th style="width: 11%;">响应时间</th>
+                            <th style="width: 16%;">错误原因</th>
                         </tr>
                     </thead>
                     <tbody id="history-tbody">
                         <tr class="empty-state">
-                            <td colspan="6">
+                            <td colspan="7">
                                 <div class="empty-message">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                                     暂无代理流量记录，请在终端使用 Claude Code 发起对话...

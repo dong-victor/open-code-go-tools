@@ -238,7 +238,7 @@ function renderHistoryTable(logs) {
     if (!logs || logs.length === 0) {
         tbodyHistory.innerHTML = `
             <tr class="empty-state">
-                <td colspan="6">
+                <td colspan="7">
                     <div class="empty-message">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                         暂无代理流量记录，请在终端使用 Claude Code 发起对话...
@@ -262,11 +262,21 @@ function renderHistoryTable(logs) {
                 <td class="font-mono" style="color: #60a5fa;">${log.model || '-'}</td>
                 <td><span class="status-badge ${badgeClass}">${log.status}</span></td>
                 <td class="font-mono" style="color: var(--success); font-weight: 600;">${log.duration}</td>
+                <td class="error-cell" title="${escapeHtml(log.error || '')}">${escapeHtml(log.error || '-')}</td>
             </tr>
         `;
     });
     
     tbodyHistory.innerHTML = rowsHTML;
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // 格式化日期为 HH:mm:ss

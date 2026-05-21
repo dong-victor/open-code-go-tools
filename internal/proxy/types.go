@@ -22,6 +22,7 @@ type requestLogEntry struct {
 	Duration string    `json:"duration"`
 	Model    string    `json:"model"`
 	Route    string    `json:"route"`
+	Error    string    `json:"error,omitempty"`
 }
 
 type Server struct {

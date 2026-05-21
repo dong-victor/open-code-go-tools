@@ -1024,7 +1024,7 @@ input::placeholder {
 
 .data-table {
     width: 100%;
-    min-width: 720px;
+    min-width: 880px;
     border-collapse: collapse;
     text-align: left;
     font-size: 13px;
@@ -1088,6 +1088,13 @@ input::placeholder {
 
 .duration-cell {
     font-family: var(--mono);
+    color: var(--text-2);
+}
+
+.error-cell {
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--text-2);
 }
 

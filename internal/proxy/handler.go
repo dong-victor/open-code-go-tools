@@ -211,12 +211,19 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		status := proxyErrorStatus(err)
 		writeError(w, status, err)
-		s.addHistoryEntry(r.Method, r.URL.Path, status, time.Since(start), payload.Model, "messages")
+		s.addHistoryEntryWithError(r.Method, r.URL.Path, status, time.Since(start), payload.Model, "messages", err.Error())
 		return
 	}
 	defer resp.Body.Close()
 	duration := time.Since(start)
 	log.Printf("upstream route=messages model=%s status=%d", payload.Model, resp.StatusCode)
+	if resp.StatusCode >= 400 {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, MaxBodySize))
+		errText := upstreamErrorSummary(resp.StatusCode, data)
+		writeUpstreamError(w, resp.StatusCode, data)
+		s.addHistoryEntryWithError(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "messages", errText)
+		return
+	}
 	copyHeaders(w.Header(), resp.Header)
 	stripHopByHopHeaders(w.Header())
 	w.WriteHeader(resp.StatusCode)
@@ -250,7 +257,7 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 	if err != nil {
 		status := proxyErrorStatus(err)
 		writeError(w, status, err)
-		s.addHistoryEntry(r.Method, r.URL.Path, status, time.Since(start), payload.Model, "chat/completions")
+		s.addHistoryEntryWithError(r.Method, r.URL.Path, status, time.Since(start), payload.Model, "chat/completions", err.Error())
 		return
 	}
 	defer resp.Body.Close()
@@ -259,7 +266,7 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 	if resp.StatusCode >= 400 {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, MaxBodySize))
 		writeUpstreamError(w, resp.StatusCode, data)
-		s.addHistoryEntry(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions")
+		s.addHistoryEntryWithError(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions", upstreamErrorSummary(resp.StatusCode, data))
 		return
 	}
 	if payload.Stream && !bridgeToolStream {
@@ -433,6 +440,10 @@ func configuredModels(profile config.Profile) map[string]any {
 }
 
 func (s *Server) addHistoryEntry(method, path string, status int, duration time.Duration, model, route string) {
+	s.addHistoryEntryWithError(method, path, status, duration, model, route, "")
+}
+
+func (s *Server) addHistoryEntryWithError(method, path string, status int, duration time.Duration, model, route, errorText string) {
 	s.historyMu.Lock()
 	defer s.historyMu.Unlock()
 	entry := requestLogEntry{
@@ -444,6 +455,7 @@ func (s *Server) addHistoryEntry(method, path string, status int, duration time.
 		Duration: duration.Round(time.Millisecond).String(),
 		Model:    model,
 		Route:    route,
+		Error:    errorText,
 	}
 	s.history = append([]requestLogEntry{entry}, s.history...) // prepend so newest is first
 	if len(s.history) > 100 {
