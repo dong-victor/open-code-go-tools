@@ -1,10 +1,13 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"time"
 )
@@ -84,6 +87,18 @@ func writeError(w http.ResponseWriter, status int, err error) {
 	writeJSON(w, status, map[string]any{"error": map[string]string{"type": "ocgt_error", "message": err.Error()}})
 }
 
+func proxyErrorStatus(err error) int {
+	var netErr net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
+		return http.StatusGatewayTimeout
+	}
+	return http.StatusBadGateway
+}
+
+func writeProxyError(w http.ResponseWriter, err error) {
+	writeError(w, proxyErrorStatus(err), err)
+}
+
 func writeUpstreamError(w http.ResponseWriter, status int, body []byte) {
 	if len(body) == 0 {
 		writeError(w, status, fmt.Errorf("upstream returned %d", status))
@@ -96,6 +111,22 @@ func writeUpstreamError(w http.ResponseWriter, status int, body []byte) {
 
 func requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Enable CORS for frontend API requests
+		if origin := r.Header.Get("Origin"); origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Ocgt-Profile")
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "*")
+		}
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)

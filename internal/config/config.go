@@ -8,18 +8,21 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
-	DefaultListen   = "127.0.0.1:8787"
-	DefaultUpstream = "https://opencode.ai/zen/go"
+	DefaultListen                = "127.0.0.1:8787"
+	DefaultUpstream              = "https://opencode.ai/zen/go"
+	DefaultRequestTimeoutSeconds = 300
 )
 
 type Config struct {
-	Listen        string             `json:"listen"`
-	Upstream      string             `json:"upstream"`
-	ActiveProfile string             `json:"active_profile"`
-	Profiles      map[string]Profile `json:"profiles"`
+	Listen                string             `json:"listen"`
+	Upstream              string             `json:"upstream"`
+	RequestTimeoutSeconds int                `json:"request_timeout_seconds,omitempty"`
+	ActiveProfile         string             `json:"active_profile"`
+	Profiles              map[string]Profile `json:"profiles"`
 }
 
 type Profile struct {
@@ -44,9 +47,10 @@ func DefaultPath() (string, error) {
 
 func Example() Config {
 	return Config{
-		Listen:        DefaultListen,
-		Upstream:      DefaultUpstream,
-		ActiveProfile: "opencode-go",
+		Listen:                DefaultListen,
+		Upstream:              DefaultUpstream,
+		RequestTimeoutSeconds: DefaultRequestTimeoutSeconds,
+		ActiveProfile:         "opencode-go",
 		Profiles: map[string]Profile{
 			"opencode-go": {
 				APIKeyEnv:    "OPENCODE_GO_API_KEY",
@@ -121,12 +125,33 @@ func WriteExample(path string, overwrite bool) (string, error) {
 	return path, os.WriteFile(path, append(data, '\n'), 0o600)
 }
 
+func (c Config) Save(path string) error {
+	if strings.TrimSpace(path) == "" {
+		var err error
+		path, err = DefaultPath()
+		if err != nil {
+			return err
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0o600)
+}
+
 func (c *Config) applyDefaults() {
 	if c.Listen == "" {
 		c.Listen = DefaultListen
 	}
 	if c.Upstream == "" {
 		c.Upstream = DefaultUpstream
+	}
+	if c.RequestTimeoutSeconds == 0 {
+		c.RequestTimeoutSeconds = DefaultRequestTimeoutSeconds
 	}
 	if c.Profiles == nil {
 		c.Profiles = map[string]Profile{}
@@ -142,6 +167,9 @@ func (c Config) Validate() error {
 	if _, err := url.ParseRequestURI(c.Upstream); err != nil {
 		return fmt.Errorf("invalid upstream %q: %w", c.Upstream, err)
 	}
+	if c.RequestTimeoutSeconds < 1 || c.RequestTimeoutSeconds > 3600 {
+		return fmt.Errorf("request_timeout_seconds must be between 1 and 3600, got %d", c.RequestTimeoutSeconds)
+	}
 	if len(c.Profiles) == 0 {
 		return errors.New("at least one profile is required")
 	}
@@ -149,6 +177,14 @@ func (c Config) Validate() error {
 		return fmt.Errorf("active profile %q does not exist", c.ActiveProfile)
 	}
 	return nil
+}
+
+func (c Config) RequestTimeout() time.Duration {
+	seconds := c.RequestTimeoutSeconds
+	if seconds == 0 {
+		seconds = DefaultRequestTimeoutSeconds
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // WarnIfNoAPIKey checks if the active profile has an API key and returns a warning message if not.
@@ -196,11 +232,11 @@ func (p Profile) ResolveModel(model string) string {
 	}
 	lower := strings.ToLower(model)
 	switch {
-	case strings.HasPrefix(lower, "claude-opus"):
+	case strings.Contains(lower, "opus"):
 		return p.resolveAliasOrDefault("opus")
-	case strings.HasPrefix(lower, "claude-sonnet"):
+	case strings.Contains(lower, "sonnet"):
 		return p.resolveAliasOrDefault("sonnet")
-	case strings.HasPrefix(lower, "claude-haiku"):
+	case strings.Contains(lower, "haiku"):
 		return p.resolveAliasOrDefault("haiku")
 	}
 	return model

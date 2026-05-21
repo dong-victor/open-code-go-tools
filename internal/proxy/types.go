@@ -13,14 +13,33 @@ const maxReasoningEntries = 1024
 // MaxBodySize is the maximum allowed request body size (10 MB).
 const MaxBodySize int64 = 10 << 20
 
+type requestLogEntry struct {
+	ID       string    `json:"id"`
+	Time     time.Time `json:"time"`
+	Method   string    `json:"method"`
+	Path     string    `json:"path"`
+	Status   int       `json:"status"`
+	Duration string    `json:"duration"`
+	Model    string    `json:"model"`
+	Route    string    `json:"route"`
+}
+
 type Server struct {
-	config   config.Config
-	client   *http.Client
-	upstream string
+	config     config.Config
+	configPath string
+	client     *http.Client
+	upstream   string
 
 	reasoningMu     sync.Mutex
 	reasoningByTool map[string]string
 	reasoningOrder  []string
+
+	historyMu sync.RWMutex
+	history   []requestLogEntry
+}
+
+func (s *Server) SetConfigPath(path string) {
+	s.configPath = path
 }
 
 type anthropicRequest struct {
@@ -142,7 +161,23 @@ func New(cfg config.Config) (*Server, error) {
 	return &Server{
 		config:          cfg,
 		upstream:        cfg.Upstream,
-		client:          &http.Client{Timeout: 5 * time.Minute, Transport: transport},
+		client:          &http.Client{Timeout: cfg.RequestTimeout(), Transport: transport},
 		reasoningByTool: map[string]string{},
 	}, nil
+}
+
+func (s *Server) Config() *config.Config {
+	return &s.config
+}
+
+func (s *Server) ApplyConfig(cfg config.Config) {
+	s.config = cfg
+	s.upstream = cfg.Upstream
+	if s.client != nil {
+		s.client.Timeout = cfg.RequestTimeout()
+	}
+}
+
+func (s *Server) ListenAddress() string {
+	return s.config.Listen
 }

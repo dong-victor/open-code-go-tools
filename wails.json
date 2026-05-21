@@ -1,0 +1,16 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "ocgt",
+  "outputfilename": "ocgt.exe",
+  "frontend:dir": "frontend",
+  "wailsjsdir": "./frontend/src",
+  "author": {
+    "name": "ethan-blue",
+    "email": ""
+  },
+  "info": {
+    "productName": "ocgt 控制面板",
+    "productVersion": "0.1.0",
+    "companyName": "ethan-blue"
+  }
+}

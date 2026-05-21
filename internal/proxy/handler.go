@@ -23,9 +23,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/models", s.models)
 	mux.HandleFunc("/v1/messages/count_tokens", s.countTokens)
 	mux.HandleFunc("/v1/messages", s.messages)
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		writeError(w, http.StatusNotFound, fmt.Errorf("unsupported path %q", r.URL.Path))
-	})
+
+	// Web Dashboard API
+	mux.HandleFunc("/ocgt/api/status", s.apiStatus)
+	mux.HandleFunc("/ocgt/api/profiles", s.apiProfiles)
+	mux.HandleFunc("/ocgt/api/profiles/active", s.apiSetActiveProfile)
+	mux.HandleFunc("/ocgt/api/key", s.apiSetKey)
+	mux.HandleFunc("/ocgt/api/history", s.apiHistory)
+
+	mux.HandleFunc("/", s.serveStatic)
 	return requestLogger(mux)
 }
 
@@ -77,7 +83,7 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := s.client.Do(req)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		writeProxyError(w, err)
 		return
 	}
 	defer resp.Body.Close()
@@ -200,17 +206,22 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 			req.Header.Set(key, val)
 		}
 	}
+	start := time.Now()
 	resp, err := s.client.Do(req)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		status := proxyErrorStatus(err)
+		writeError(w, status, err)
+		s.addHistoryEntry(r.Method, r.URL.Path, status, time.Since(start), payload.Model, "messages")
 		return
 	}
 	defer resp.Body.Close()
+	duration := time.Since(start)
 	log.Printf("upstream route=messages model=%s status=%d", payload.Model, resp.StatusCode)
 	copyHeaders(w.Header(), resp.Header)
 	stripHopByHopHeaders(w.Header())
 	w.WriteHeader(resp.StatusCode)
 	_, _ = copyResponse(w, resp.Body)
+	s.addHistoryEntry(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "messages")
 }
 
 func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, profile config.Profile, payload anthropicRequest) {
@@ -234,34 +245,43 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	start := time.Now()
 	resp, err := s.client.Do(req)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err)
+		status := proxyErrorStatus(err)
+		writeError(w, status, err)
+		s.addHistoryEntry(r.Method, r.URL.Path, status, time.Since(start), payload.Model, "chat/completions")
 		return
 	}
 	defer resp.Body.Close()
+	duration := time.Since(start)
 	log.Printf("upstream route=chat/completions model=%s status=%d", payload.Model, resp.StatusCode)
 	if resp.StatusCode >= 400 {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, MaxBodySize))
 		writeUpstreamError(w, resp.StatusCode, data)
+		s.addHistoryEntry(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions")
 		return
 	}
 	if payload.Stream && !bridgeToolStream {
 		streamOpenAIAsAnthropic(w, resp.Body, payload.Model)
+		s.addHistoryEntry(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions (stream)")
 		return
 	}
 	var out openAIResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		writeError(w, http.StatusBadGateway, err)
+		s.addHistoryEntry(r.Method, r.URL.Path, http.StatusBadGateway, duration, payload.Model, "chat/completions")
 		return
 	}
 	s.cacheReasoningContent(out)
 	message := openAIToAnthropic(out, payload.Model)
 	if bridgeToolStream {
 		streamAnthropicMessage(w, message)
+		s.addHistoryEntry(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions (tool-stream)")
 		return
 	}
 	writeJSON(w, http.StatusOK, message)
+	s.addHistoryEntry(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions")
 }
 
 func (s *Server) newUpstreamRequest(ctx context.Context, method, path string, body io.Reader, profile config.Profile) (*http.Request, error) {
@@ -410,4 +430,151 @@ func configuredModels(profile config.Profile) map[string]any {
 		add(id)
 	}
 	return map[string]any{"data": models, "has_more": false}
+}
+
+func (s *Server) addHistoryEntry(method, path string, status int, duration time.Duration, model, route string) {
+	s.historyMu.Lock()
+	defer s.historyMu.Unlock()
+	entry := requestLogEntry{
+		ID:       fmt.Sprintf("req_%d", time.Now().UnixNano()),
+		Time:     time.Now(),
+		Method:   method,
+		Path:     path,
+		Status:   status,
+		Duration: duration.Round(time.Millisecond).String(),
+		Model:    model,
+		Route:    route,
+	}
+	s.history = append([]requestLogEntry{entry}, s.history...) // prepend so newest is first
+	if len(s.history) > 100 {
+		s.history = s.history[:100]
+	}
+}
+
+func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
+	s.historyMu.RLock()
+	defer s.historyMu.RUnlock()
+
+	activeProfile := s.config.ActiveProfile
+	profile, _, _ := s.config.Profile(activeProfile)
+
+	status := map[string]any{
+		"status":                  "running",
+		"listen":                  s.config.Listen,
+		"upstream":                s.config.Upstream,
+		"request_timeout_seconds": s.config.RequestTimeoutSeconds,
+		"api_key_configured":      profile.APIKeyValue() != "",
+		"config_path":             s.configPath,
+		"active_profile":          activeProfile,
+		"default_model":           profile.DefaultModel,
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) apiProfiles(w http.ResponseWriter, r *http.Request) {
+	s.historyMu.RLock()
+	defer s.historyMu.RUnlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"active_profile": s.config.ActiveProfile,
+		"profiles":       s.config.Profiles,
+	})
+}
+
+func (s *Server) apiSetActiveProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, errors.New("POST required"))
+		return
+	}
+	var req struct {
+		Profile string `json:"profile"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	// Validate profile exists
+	_, _, err := s.config.Profile(req.Profile)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	s.config.ActiveProfile = req.Profile
+	if err := s.config.Save(s.configPath); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to save config: %w", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "success", "active_profile": s.config.ActiveProfile})
+}
+
+func (s *Server) apiSetKey(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, errors.New("POST required"))
+		return
+	}
+	var req struct {
+		Profile               string            `json:"profile"`
+		APIKey                string            `json:"api_key"`
+		DefaultModel          string            `json:"default_model"`
+		ModelAliases          map[string]string `json:"model_aliases"`
+		RequestTimeoutSeconds int               `json:"request_timeout_seconds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	profileName := req.Profile
+	if profileName == "" {
+		profileName = s.config.ActiveProfile
+	}
+
+	p, ok := s.config.Profiles[profileName]
+	if !ok {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("profile %q not found", profileName))
+		return
+	}
+	if req.RequestTimeoutSeconds != 0 && (req.RequestTimeoutSeconds < 1 || req.RequestTimeoutSeconds > 3600) {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("request_timeout_seconds must be between 1 and 3600, got %d", req.RequestTimeoutSeconds))
+		return
+	}
+
+	p.APIKey = req.APIKey
+	if req.DefaultModel != "" {
+		p.DefaultModel = req.DefaultModel
+	}
+	if len(req.ModelAliases) > 0 {
+		if p.ModelAliases == nil {
+			p.ModelAliases = map[string]string{}
+		}
+		for k, v := range req.ModelAliases {
+			p.ModelAliases[k] = v
+		}
+	}
+	s.config.Profiles[profileName] = p
+	if req.RequestTimeoutSeconds != 0 {
+		s.config.RequestTimeoutSeconds = req.RequestTimeoutSeconds
+		s.client.Timeout = s.config.RequestTimeout()
+	}
+
+	if err := s.config.Save(s.configPath); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to save config: %w", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "success", "profile": profileName})
+}
+
+func (s *Server) apiHistory(w http.ResponseWriter, r *http.Request) {
+	s.historyMu.RLock()
+	defer s.historyMu.RUnlock()
+
+	if s.history == nil {
+		writeJSON(w, http.StatusOK, []requestLogEntry{})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.history)
 }

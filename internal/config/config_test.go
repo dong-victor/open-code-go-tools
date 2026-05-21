@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestExampleIsValid(t *testing.T) {
 	cfg := Example()
@@ -51,11 +54,20 @@ func TestResolveClaudeCompatModel(t *testing.T) {
 	if got := profile.ResolveModel("claude-opus-4-7-r5"); got != "kimi-k2.6" {
 		t.Fatalf("opus compat model resolved to %q", got)
 	}
+	if got := profile.ResolveModel("claude-3-opus-20240229"); got != "kimi-k2.6" {
+		t.Fatalf("real claude-3-opus resolved to %q", got)
+	}
 	if got := profile.ResolveModel("claude-sonnet-4-6"); got != "qwen3.6-plus" {
 		t.Fatalf("sonnet compat model resolved to %q", got)
 	}
+	if got := profile.ResolveModel("claude-3-5-sonnet-20241022"); got != "qwen3.6-plus" {
+		t.Fatalf("real claude-3-5-sonnet resolved to %q", got)
+	}
 	if got := profile.ResolveModel("claude-haiku-4-5"); got != "deepseek-v4-flash" {
 		t.Fatalf("haiku compat model resolved to %q", got)
+	}
+	if got := profile.ResolveModel("claude-3-5-haiku-20241022"); got != "deepseek-v4-flash" {
+		t.Fatalf("real claude-3-5-haiku resolved to %q", got)
 	}
 }
 
@@ -101,6 +113,35 @@ func TestValidateInvalidUpstream(t *testing.T) {
 	}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for invalid upstream")
+	}
+}
+
+func TestRequestTimeoutDefault(t *testing.T) {
+	cfg := Config{
+		Listen:        "127.0.0.1:8787",
+		Upstream:      "https://opencode.ai/zen/go",
+		ActiveProfile: "test",
+		Profiles:      map[string]Profile{"test": {DefaultModel: "kimi-k2.6"}},
+	}
+	cfg.applyDefaults()
+	if cfg.RequestTimeoutSeconds != DefaultRequestTimeoutSeconds {
+		t.Fatalf("expected default request timeout %d, got %d", DefaultRequestTimeoutSeconds, cfg.RequestTimeoutSeconds)
+	}
+	if got := cfg.RequestTimeout(); got != time.Duration(DefaultRequestTimeoutSeconds)*time.Second {
+		t.Fatalf("unexpected request timeout duration: %v", got)
+	}
+}
+
+func TestValidateInvalidRequestTimeout(t *testing.T) {
+	cfg := Config{
+		Listen:                "127.0.0.1:8787",
+		Upstream:              "https://opencode.ai/zen/go",
+		RequestTimeoutSeconds: 3601,
+		ActiveProfile:         "test",
+		Profiles:              map[string]Profile{"test": {DefaultModel: "kimi-k2.6"}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for invalid request timeout")
 	}
 }
 

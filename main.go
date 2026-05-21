@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -17,22 +19,56 @@ import (
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/proxy"
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
+
+//go:embed all:frontend
+var assets embed.FS
 
 var version = "0.1.0"
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	args := os.Args[1:]
+	// If no arguments are provided, or the first argument is "gui", start the Wails desktop app
+	if len(args) == 0 || args[0] == "gui" {
+		runWailsGui()
+		return
+	}
+
+	// Otherwise, run CLI commands
+	if err := runCLI(args); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string) error {
-	if len(args) == 0 {
-		usage()
-		return nil
+func runWailsGui() {
+	app := NewApp()
+
+	// Configure Wails options
+	err := wails.Run(&options.App{
+		Title:  "ocgt 控制面板",
+		Width:  1100,
+		Height: 850,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		BackgroundColour: &options.RGBA{R: 248, G: 250, B: 252, A: 255}, // premium SaaS light background (#f8fafc)
+		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown,
+		Bind: []interface{}{
+			app,
+		},
+	})
+
+	if err != nil {
+		log.Println("Wails desktop error:", err)
 	}
+}
+
+func runCLI(args []string) error {
 	switch args[0] {
 	case "init":
 		return cmdInit(args[1:])
@@ -384,23 +420,13 @@ func printEnv(env map[string]string, shell string) {
 	}
 }
 
-type multiFlag []string
-
-func (m *multiFlag) String() string {
-	return strings.Join(*m, ",")
-}
-
-func (m *multiFlag) Set(v string) error {
-	*m = append(*m, v)
-	return nil
-}
-
 func usage() {
 	fmt.Print(`ocgt - official Claude API proxy for Claude Code and CC Switch
-
+	
 Commands:
+  gui           run the graphical control panel (default when double-clicked)
   init          create ~/.ocgt/config.json
-  serve         run the local proxy
+  serve         run the local proxy (CLI mode)
   profiles      list configured profiles
   models        show local aliases or query official /v1/models with --remote
   claude-env    print environment variables for Claude Code
@@ -409,6 +435,7 @@ Commands:
   version       print version
 
 Typical flow:
+  双击运行可启动网页控制面板，或者使用 CLI：
   ocgt init
   ocgt serve
   ocgt claude-env
