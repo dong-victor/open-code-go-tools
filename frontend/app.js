@@ -15,6 +15,7 @@ const elApiKey = document.getElementById('status-api-key');
 const selectProfile = document.getElementById('profile-select');
 const inputApiKey = document.getElementById('api-key-input');
 const inputTimeout = document.getElementById('timeout-input');
+const inputThinkingBudget = document.getElementById('thinking-budget-input');
 const inputDefaultModel = document.getElementById('default-model-input');
 const inputSonnetMapping = document.getElementById('mapping-sonnet-input');
 const inputHaikuMapping = document.getElementById('mapping-haiku-input');
@@ -34,28 +35,41 @@ const themeToggleBtn = document.getElementById('themeToggleBtn');
 const statusPill = document.getElementById('statusPill');
 const uptimeBadge = document.querySelector('.uptime-badge');
 
+let isInitializing = false;
+
 document.addEventListener('DOMContentLoaded', () => {
     setupEventHandlers();
     initializeApp();
-    setInterval(() => {
+    setInterval(async () => {
         if (proxyReady) {
-            loadHistory();
+            await loadHistory();
         } else {
-            initializeApp();
+            await initializeApp();
         }
     }, 2500);
 });
 
 async function initializeApp() {
+    if (isInitializing) return;
+    isInitializing = true;
     setProxyConnectionState('connecting');
     await resolveApiBase();
     proxyReady = await waitForProxyReady();
     if (!proxyReady) {
         setProxyConnectionState('offline');
+        isInitializing = false;
         return;
     }
     setProxyConnectionState('online');
-    await Promise.all([loadStatus(), loadProfiles(), loadHistory()]);
+    try {
+        await Promise.all([loadStatus(), loadProfiles(), loadHistory()]);
+    } catch (err) {
+        console.error('Error during initial load:', err);
+        proxyReady = false;
+        setProxyConnectionState('offline');
+    } finally {
+        isInitializing = false;
+    }
 }
 
 async function resolveApiBase() {
@@ -72,11 +86,11 @@ async function resolveApiBase() {
     }
 }
 
-async function waitForProxyReady(timeoutMs = 12000) {
+async function waitForProxyReady(timeoutMs = 2500) {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
         try {
-            const resp = await apiFetch('/healthz', { cache: 'no-store' }, 1200);
+            const resp = await apiFetch('/healthz', { cache: 'no-store' }, 700);
             if (resp.ok) return true;
         } catch (err) {
             // Retry until the Wails-started proxy finishes binding its port.
@@ -146,6 +160,12 @@ async function loadStatus() {
                 inputTimeout.value = seconds.toString();
             }
         }
+        if (inputThinkingBudget) {
+            const budget = Number(systemStatus.max_thinking_budget_tokens ?? 512);
+            if (!document.activeElement.isSameNode(inputThinkingBudget)) {
+                setThinkingBudgetValue(budget.toString());
+            }
+        }
         // Show auth status
         const elAuth = document.getElementById('status-auth');
         if (elAuth) {
@@ -191,6 +211,27 @@ function setSelectValue(selectEl, value) {
     }
 }
 
+function setThinkingBudgetValue(value) {
+    if (!inputThinkingBudget) return;
+    const allowed = ['256', '512', '1024', '2048', '-1'];
+    if (allowed.includes(value)) {
+        inputThinkingBudget.value = value;
+        return;
+    }
+    let opt = Array.from(inputThinkingBudget.options).find(item => item.value === value);
+    if (!opt) {
+        opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = `${value} · 当前自定义值`;
+        inputThinkingBudget.insertBefore(opt, inputThinkingBudget.lastElementChild);
+    }
+    inputThinkingBudget.value = value;
+}
+
+function isAllowedThinkingBudget(value) {
+    return ['256', '512', '1024', '2048', '-1'].includes(value);
+}
+
 async function loadProfiles() {
     try {
         const resp = await apiFetch('/ocgt/api/profiles');
@@ -217,8 +258,12 @@ async function loadProfiles() {
             setSelectValue(inputHaikuMapping, aliases.haiku || '');
             setSelectValue(inputOpusMapping, aliases.opus || '');
         }
+        return true;
     } catch (err) {
         console.error('Error loading profiles:', err);
+        proxyReady = false;
+        setProxyConnectionState('offline');
+        return false;
     }
 }
 
@@ -227,8 +272,12 @@ async function loadHistory() {
         const resp = await apiFetch('/ocgt/api/history');
         if (!resp.ok) throw new Error('Failed');
         renderHistoryTable(await resp.json());
+        return true;
     } catch (err) {
         console.error('Error loading history:', err);
+        proxyReady = false;
+        setProxyConnectionState('offline');
+        return false;
     }
 }
 
@@ -297,10 +346,16 @@ function setupEventHandlers() {
         const haiku = inputHaikuMapping.value.trim();
         const opus = inputOpusMapping.value.trim();
         const timeoutSeconds = inputTimeout ? inputTimeout.value.trim() : '300';
+        const thinkingBudget = inputThinkingBudget ? inputThinkingBudget.value.trim() : '512';
         const timeoutNumber = Number(timeoutSeconds);
+        const thinkingBudgetNumber = Number(thinkingBudget);
 
         if (!Number.isInteger(timeoutNumber) || timeoutNumber < 1 || timeoutNumber > 3600) {
             alert('请求超时必须是 1 到 3600 之间的整数秒。');
+            return;
+        }
+        if (!isAllowedThinkingBudget(thinkingBudget)) {
+            alert('请选择有效的思考强度。');
             return;
         }
 
@@ -308,7 +363,7 @@ function setupEventHandlers() {
 
         if (window.go && window.go.main && window.go.main.App) {
             try {
-                const res = await window.go.main.App.SaveProfileConfig(pName, key, defModel, sonnet, haiku, opus, timeoutSeconds);
+                const res = await window.go.main.App.SaveProfileConfig(pName, key, defModel, sonnet, haiku, opus, timeoutSeconds, thinkingBudget);
                 if (res === "success") {
                     setButtonState(btnSaveAllConfig, 'success');
                     await installClaudeUserEnv(false);
@@ -335,7 +390,8 @@ function setupEventHandlers() {
                         api_key: key,
                         default_model: defModel,
                         model_aliases: { sonnet, haiku, opus },
-                        request_timeout_seconds: timeoutNumber
+                        request_timeout_seconds: timeoutNumber,
+                        max_thinking_budget_tokens: thinkingBudgetNumber
                     })
                 });
                 if (resp.ok) {
@@ -526,10 +582,24 @@ function renderEnvCode() {
     if (!systemStatus) return;
     const { listen, active_profile: profile } = systemStatus;
     const model = systemStatus.default_model || 'kimi-k2.6';
+    const thinkingBudget = Number.isInteger(Number(systemStatus.max_thinking_budget_tokens))
+        ? Number(systemStatus.max_thinking_budget_tokens)
+        : 512;
+    const thinkingLines = thinkingBudget < 0
+        ? {
+            powershell: `$env:MAX_THINKING_TOKENS = "0"\n$env:CLAUDE_CODE_DISABLE_THINKING = "1"`,
+            bash: `export MAX_THINKING_TOKENS="0"\nexport CLAUDE_CODE_DISABLE_THINKING="1"`,
+            cmd: `set MAX_THINKING_TOKENS=0\nset CLAUDE_CODE_DISABLE_THINKING=1`
+        }
+        : {
+            powershell: `$env:MAX_THINKING_TOKENS = "${thinkingBudget}"`,
+            bash: `export MAX_THINKING_TOKENS="${thinkingBudget}"`,
+            cmd: `set MAX_THINKING_TOKENS=${thinkingBudget}`
+        };
     const templates = {
-        powershell: `$env:ANTHROPIC_BASE_URL = "http://${listen}"\n$env:ANTHROPIC_API_KEY = "ocgt-local-proxy"\n$env:ANTHROPIC_CUSTOM_HEADERS = "X-Ocgt-Profile: ${profile}"\n$env:ANTHROPIC_MODEL = "${model}"`,
-        bash: `export ANTHROPIC_BASE_URL="http://${listen}"\nexport ANTHROPIC_API_KEY="ocgt-local-proxy"\nexport ANTHROPIC_CUSTOM_HEADERS="X-Ocgt-Profile: ${profile}"\nexport ANTHROPIC_MODEL="${model}"`,
-        cmd: `set ANTHROPIC_BASE_URL=http://${listen}\nset ANTHROPIC_API_KEY=ocgt-local-proxy\nset ANTHROPIC_CUSTOM_HEADERS=X-Ocgt-Profile:${profile}\nset ANTHROPIC_MODEL=${model}`
+        powershell: `$env:ANTHROPIC_BASE_URL = "http://${listen}"\n$env:ANTHROPIC_API_KEY = "ocgt-local-proxy"\n$env:ANTHROPIC_CUSTOM_HEADERS = "X-Ocgt-Profile: ${profile}"\n$env:ANTHROPIC_MODEL = "${model}"\n${thinkingLines.powershell}`,
+        bash: `export ANTHROPIC_BASE_URL="http://${listen}"\nexport ANTHROPIC_API_KEY="ocgt-local-proxy"\nexport ANTHROPIC_CUSTOM_HEADERS="X-Ocgt-Profile: ${profile}"\nexport ANTHROPIC_MODEL="${model}"\n${thinkingLines.bash}`,
+        cmd: `set ANTHROPIC_BASE_URL=http://${listen}\nset ANTHROPIC_API_KEY=ocgt-local-proxy\nset ANTHROPIC_CUSTOM_HEADERS=X-Ocgt-Profile:${profile}\nset ANTHROPIC_MODEL=${model}\n${thinkingLines.cmd}`
     };
     codeEnv.innerText = templates[currentShell] || templates.powershell;
 }

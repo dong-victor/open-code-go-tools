@@ -141,10 +141,11 @@ func openAIToAnthropic(in openAIResponse, model string) map[string]any {
 	stopReason := "end_turn"
 	if len(in.Choices) > 0 {
 		choice := in.Choices[0]
-		if choice.Message.ReasoningContent != "" {
+		rc := reasoningText(choice.Message.ReasoningContent, choice.Message.ThinkingContent, choice.Message.Thinking, choice.Message.Reasoning, choice.Message.ReasoningDetails)
+		if rc != "" {
 			content = append(content, map[string]any{
 				"type":     "thinking",
-				"thinking": choice.Message.ReasoningContent,
+				"thinking": rc,
 			})
 		}
 		if choice.Message.Content != "" {
@@ -270,10 +271,116 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func reasoningText(values ...any) string {
+	for _, value := range values {
+		if text := reasoningTextValue(value); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func reasoningTextValue(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(v)
+	case []any:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			if text := reasoningTextValue(item); text != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	case map[string]any:
+		keys := []string{"reasoning_content", "thinking_content", "thinking", "reasoning", "content", "text", "summary"}
+		parts := make([]string, 0, len(keys))
+		for _, key := range keys {
+			if text := reasoningTextValue(v[key]); text != "" {
+				parts = append(parts, text)
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "\n")
+		}
+	}
+	return ""
+}
+
+func boundedThinkingPayload(thinking any, maxBudgetTokens int) any {
+	if thinking == nil || maxBudgetTokens < 0 {
+		return nil
+	}
+	if maxBudgetTokens == 0 {
+		return thinking
+	}
+	switch v := thinking.(type) {
+	case bool:
+		if !v {
+			return nil
+		}
+		return map[string]any{"type": "enabled", "budget_tokens": maxBudgetTokens}
+	case string:
+		if strings.EqualFold(v, "disabled") || strings.EqualFold(v, "false") {
+			return nil
+		}
+		return map[string]any{"type": v, "budget_tokens": maxBudgetTokens}
+	case map[string]any:
+		out := make(map[string]any, len(v)+1)
+		for key, value := range v {
+			out[key] = value
+		}
+		if typ, _ := out["type"].(string); strings.EqualFold(typ, "disabled") {
+			return out
+		}
+		out["budget_tokens"] = clampThinkingBudget(out["budget_tokens"], maxBudgetTokens)
+		return out
+	default:
+		return map[string]any{"type": "enabled", "budget_tokens": maxBudgetTokens}
+	}
+}
+
+func clampThinkingBudget(value any, maxBudgetTokens int) int {
+	budget := intFromJSONNumber(value)
+	if budget <= 0 || budget > maxBudgetTokens {
+		return maxBudgetTokens
+	}
+	return budget
+}
+
+func intFromJSONNumber(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		i, _ := v.Int64()
+		return int(i)
+	default:
+		return 0
+	}
+}
+
 func singleJoin(base, path string) string {
 	base = strings.TrimRight(base, "/")
 	if base == "" {
 		return path
 	}
 	return base + "/" + strings.TrimLeft(path, "/")
+}
+
+func isDeepSeekThinkingModel(model string) bool {
+	lower := strings.ToLower(model)
+	return strings.Contains(lower, "deepseek-v4") ||
+		strings.Contains(lower, "deepseek-r1") ||
+		strings.Contains(lower, "deepseek-reasoner") ||
+		strings.Contains(lower, "ds-r1") ||
+		strings.HasSuffix(lower, "/r1") ||
+		strings.Contains(lower, "r1-") ||
+		strings.Contains(lower, "reasoning")
 }

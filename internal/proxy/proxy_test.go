@@ -96,6 +96,43 @@ func TestStreamOpenAIAsAnthropic_WithReasoning(t *testing.T) {
 	}
 }
 
+func TestStreamOpenAIAsAnthropic_WithStructuredReasoning(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: {\"id\":\"chatcmpl_1\",\"model\":\"deepseek-v4-pro\",\"choices\":[{\"delta\":{\"reasoning\":{\"content\":\"nested think\"}},\"finish_reason\":null}]}\n\n")
+		fmt.Fprintf(w, "data: {\"id\":\"chatcmpl_1\",\"model\":\"deepseek-v4-pro\",\"choices\":[{\"delta\":{\"content\":\"done\"},\"finish_reason\":null}]}\n\n")
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	srv, err := New(config.Config{
+		Listen:        "127.0.0.1:0",
+		Upstream:      upstream.URL,
+		ActiveProfile: "test",
+		Profiles: map[string]config.Profile{
+			"test": {APIKey: "test-key", DefaultModel: "deepseek-v4-pro"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := []byte(`{"model":"deepseek-v4-pro","stream":true,"max_tokens":16,"messages":[{"role":"user","content":"think"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	respBody := rr.Body.String()
+	if !strings.Contains(respBody, "nested think") {
+		t.Fatalf("expected structured reasoning in SSE, got: %s", respBody)
+	}
+}
+
 func TestStreamOpenAIAsAnthropic_WithToolCalls(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -674,14 +711,12 @@ func TestProfileFromQueryParam(t *testing.T) {
 // ----- DeepSeek tool request disables thinking -----
 
 func TestDeepSeekToolRequestDisablesThinkingAndReplaysReasoning(t *testing.T) {
-	var sawThinking map[string]any
 	var sawReasoning string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req openAIRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatal(err)
 		}
-		sawThinking = req.Thinking
 		for _, msg := range req.Messages {
 			if msg.Role == "assistant" {
 				sawReasoning = msg.ReasoningContent
@@ -712,9 +747,6 @@ func TestDeepSeekToolRequestDisablesThinkingAndReplaysReasoning(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
-	}
-	if sawThinking["type"] != "disabled" {
-		t.Fatalf("thinking = %#v", sawThinking)
 	}
 	if sawReasoning != "private reasoning" {
 		t.Fatalf("reasoning_content = %q", sawReasoning)
@@ -752,6 +784,73 @@ func TestAnthropicToOpenAI(t *testing.T) {
 	}
 	if len(out.Tools) != 1 || out.Tools[0].Function.Name != "read_file" {
 		t.Fatalf("unexpected tools: %#v", out.Tools)
+	}
+}
+
+func TestAnthropicThinkingIsBoundedForOpenAIChatCompletions(t *testing.T) {
+	req := anthropicRequest{
+		Model:     "deepseek-v4-pro",
+		Thinking:  map[string]any{"type": "enabled", "budget_tokens": float64(1024)},
+		MaxTokens: 16,
+		Messages: []anthropicMsg{
+			{Role: "user", Content: "think"},
+		},
+	}
+	out := anthropicToOpenAI(req)
+	out.Thinking = boundedThinkingPayload(req.Thinking, 256)
+	thinking, ok := out.Thinking.(map[string]any)
+	if !ok {
+		t.Fatalf("thinking was not forwarded: %#v", out.Thinking)
+	}
+	if thinking["type"] != "enabled" || thinking["budget_tokens"] != 256 {
+		t.Fatalf("unexpected bounded thinking payload: %#v", thinking)
+	}
+}
+
+func TestAnthropicThinkingCanBeDisabledForOpenAIChatCompletions(t *testing.T) {
+	thinking := boundedThinkingPayload(map[string]any{"type": "enabled", "budget_tokens": float64(1024)}, -1)
+	if thinking != nil {
+		t.Fatalf("thinking should be disabled: %#v", thinking)
+	}
+}
+
+func TestMessagesEndpointForwardsBoundedThinking(t *testing.T) {
+	var sawThinking map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req openAIRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatal(err)
+		}
+		sawThinking, _ = req.Thinking.(map[string]any)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_1","model":"deepseek-v4-pro","choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer upstream.Close()
+
+	srv, err := New(config.Config{
+		Listen:                  "127.0.0.1:0",
+		Upstream:                upstream.URL,
+		MaxThinkingBudgetTokens: 256,
+		ActiveProfile:           "test",
+		Profiles: map[string]config.Profile{
+			"test": {APIKey: "test-key", DefaultModel: "deepseek-v4-pro"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := []byte(`{"model":"deepseek-v4-pro","max_tokens":16,"thinking":{"type":"enabled","budget_tokens":8192},"messages":[{"role":"user","content":"think"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if sawThinking["type"] != "enabled" || intFromJSONNumber(sawThinking["budget_tokens"]) != 256 {
+		t.Fatalf("unexpected thinking payload: %#v", sawThinking)
 	}
 }
 
@@ -914,14 +1013,20 @@ func TestMessagesEndpointUsesAnthropicAuth(t *testing.T) {
 
 func TestToolStreamIsBridgedAsAnthropicSSE(t *testing.T) {
 	var upstreamStream bool
+	var sawAccept string
+	var sawEncoding string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req openAIRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Fatal(err)
 		}
 		upstreamStream = req.Stream
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"chatcmpl_1","model":"kimi-k2.6","choices":[{"message":{"tool_calls":[{"id":"call_1","type":"function","function":{"name":"list_files","arguments":"{\"path\":\".\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+		sawAccept = r.Header.Get("Accept")
+		sawEncoding = r.Header.Get("Accept-Encoding")
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: {\"id\":\"chatcmpl_1\",\"model\":\"kimi-k2.6\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"list_files\",\"arguments\":\"{\\\"path\\\":\\\"test.txt\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n")
+		fmt.Fprintf(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
 
@@ -945,8 +1050,14 @@ func TestToolStreamIsBridgedAsAnthropicSSE(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
-	if upstreamStream {
-		t.Fatal("upstream stream should be disabled when bridging tool calls")
+	if !upstreamStream {
+		t.Fatal("upstream stream should be enabled for tool calls")
+	}
+	if sawAccept != "text/event-stream" {
+		t.Fatalf("Accept = %q, want text/event-stream", sawAccept)
+	}
+	if sawEncoding != "identity" {
+		t.Fatalf("Accept-Encoding = %q, want identity", sawEncoding)
 	}
 	if !bytes.Contains(rr.Body.Bytes(), []byte(`"type":"tool_use"`)) {
 		t.Fatalf("SSE did not contain tool_use: %s", rr.Body.String())

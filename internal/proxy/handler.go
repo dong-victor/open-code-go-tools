@@ -210,6 +210,9 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if payload.Stream {
+		prepareStreamingUpstreamRequest(req)
+	}
 	applyAnthropicAuth(req, profile)
 	for _, key := range []string{"Anthropic-Beta"} {
 		if val := r.Header.Get(key); val != "" {
@@ -243,13 +246,8 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 
 func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, profile config.Profile, payload anthropicRequest) {
 	chatReq := anthropicToOpenAI(payload)
+	chatReq.Thinking = boundedThinkingPayload(payload.Thinking, s.thinkingBudgetTokens())
 	s.attachReasoningContent(chatReq.Messages)
-	// Don't disable thinking - let the model return reasoning_content naturally
-	// This allows DeepSeek and other thinking models to show their reasoning process
-	bridgeToolStream := payload.Stream && len(payload.Tools) > 0
-	if bridgeToolStream {
-		chatReq.Stream = false
-	}
 	body, err := json.Marshal(chatReq)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -261,6 +259,9 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if payload.Stream {
+		prepareStreamingUpstreamRequest(req)
+	}
 	start := time.Now()
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -278,8 +279,8 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 		s.addHistoryEntryWithError(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions", upstreamErrorSummary(resp.StatusCode, data))
 		return
 	}
-	if payload.Stream && !bridgeToolStream {
-		streamOpenAIAsAnthropic(w, resp.Body, payload.Model)
+	if payload.Stream {
+		streamOpenAIAsAnthropic(w, resp.Body, payload.Model, s.setReasoningLocked)
 		s.addHistoryEntry(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions (stream)")
 		return
 	}
@@ -291,13 +292,14 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 	}
 	s.cacheReasoningContent(out)
 	message := openAIToAnthropic(out, payload.Model)
-	if bridgeToolStream {
-		streamAnthropicMessage(w, message)
-		s.addHistoryEntry(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions (tool-stream)")
-		return
-	}
 	writeJSON(w, http.StatusOK, message)
 	s.addHistoryEntry(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions")
+}
+
+func (s *Server) thinkingBudgetTokens() int {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
+	return s.config.ThinkingBudgetTokens()
 }
 
 func (s *Server) newUpstreamRequest(ctx context.Context, method, path string, body io.Reader, profile config.Profile) (*http.Request, error) {
@@ -321,6 +323,12 @@ func (s *Server) newUpstreamRequest(ctx context.Context, method, path string, bo
 	}
 	stripHopByHopHeaders(req.Header)
 	return req, nil
+}
+
+func prepareStreamingUpstreamRequest(req *http.Request) {
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Accept-Encoding", "identity")
 }
 
 func applyAnthropicAuth(req *http.Request, profile config.Profile) {
@@ -353,7 +361,7 @@ func (s *Server) cacheReasoningContent(resp openAIResponse) {
 	s.reasoningMu.Lock()
 	defer s.reasoningMu.Unlock()
 	for _, choice := range resp.Choices {
-		reasoning := choice.Message.ReasoningContent
+		reasoning := reasoningText(choice.Message.ReasoningContent, choice.Message.ThinkingContent, choice.Message.Thinking, choice.Message.Reasoning, choice.Message.ReasoningDetails)
 		if reasoning == "" {
 			continue
 		}
@@ -387,6 +395,15 @@ func (s *Server) getReasoningLocked(id string) string {
 	s.reasoningMu.Lock()
 	defer s.reasoningMu.Unlock()
 	return s.reasoningByTool[id]
+}
+
+func hasToolHistory(messages []openAIMessage) bool {
+	for _, msg := range messages {
+		if len(msg.ToolCalls) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) profileFromRequest(r *http.Request) (config.Profile, string, error) {
@@ -481,20 +498,22 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 	listen := s.config.Listen
 	upstream := s.config.Upstream
 	timeoutSeconds := s.config.RequestTimeoutSeconds
+	thinkingBudgetTokens := s.config.ThinkingBudgetTokens()
 	authEnabled := s.config.LocalAuthToken != ""
 	configPath := s.configPath
 	s.configMu.RUnlock()
 
 	status := map[string]any{
-		"status":                  "running",
-		"listen":                  listen,
-		"upstream":                upstream,
-		"request_timeout_seconds": timeoutSeconds,
-		"api_key_configured":      profile.APIKeyValue() != "",
-		"config_path":             configPath,
-		"active_profile":          activeProfile,
-		"default_model":           profile.DefaultModel,
-		"auth_enabled":            authEnabled,
+		"status":                     "running",
+		"listen":                     listen,
+		"upstream":                   upstream,
+		"request_timeout_seconds":    timeoutSeconds,
+		"max_thinking_budget_tokens": thinkingBudgetTokens,
+		"api_key_configured":         profile.APIKeyValue() != "",
+		"config_path":                configPath,
+		"active_profile":             activeProfile,
+		"default_model":              profile.DefaultModel,
+		"auth_enabled":               authEnabled,
 	}
 	writeJSON(w, http.StatusOK, status)
 }
@@ -551,11 +570,12 @@ func (s *Server) apiSetKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Profile               string            `json:"profile"`
-		APIKey                string            `json:"api_key"`
-		DefaultModel          string            `json:"default_model"`
-		ModelAliases          map[string]string `json:"model_aliases"`
-		RequestTimeoutSeconds int               `json:"request_timeout_seconds"`
+		Profile                 string            `json:"profile"`
+		APIKey                  string            `json:"api_key"`
+		DefaultModel            string            `json:"default_model"`
+		ModelAliases            map[string]string `json:"model_aliases"`
+		RequestTimeoutSeconds   int               `json:"request_timeout_seconds"`
+		MaxThinkingBudgetTokens int               `json:"max_thinking_budget_tokens"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -579,6 +599,10 @@ func (s *Server) apiSetKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("request_timeout_seconds must be between 1 and 3600, got %d", req.RequestTimeoutSeconds))
 		return
 	}
+	if req.MaxThinkingBudgetTokens != 0 && (req.MaxThinkingBudgetTokens < -1 || req.MaxThinkingBudgetTokens > 8192) {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("max_thinking_budget_tokens must be -1, 0, or between 1 and 8192, got %d", req.MaxThinkingBudgetTokens))
+		return
+	}
 
 	p.APIKey = req.APIKey
 	if req.DefaultModel != "" {
@@ -596,6 +620,9 @@ func (s *Server) apiSetKey(w http.ResponseWriter, r *http.Request) {
 	if req.RequestTimeoutSeconds != 0 {
 		s.config.RequestTimeoutSeconds = req.RequestTimeoutSeconds
 		s.client.Timeout = s.config.RequestTimeout()
+	}
+	if req.MaxThinkingBudgetTokens != 0 {
+		s.config.MaxThinkingBudgetTokens = req.MaxThinkingBudgetTokens
 	}
 
 	if err := s.config.Save(s.configPath); err != nil {

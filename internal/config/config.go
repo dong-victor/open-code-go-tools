@@ -12,19 +12,21 @@ import (
 )
 
 const (
-	DefaultListen                = "127.0.0.1:8787"
-	DefaultUpstream              = "https://opencode.ai/zen/go"
-	DefaultRequestTimeoutSeconds = 300
+	DefaultListen                  = "127.0.0.1:8787"
+	DefaultUpstream                = "https://opencode.ai/zen/go"
+	DefaultRequestTimeoutSeconds   = 300
+	DefaultMaxThinkingBudgetTokens = 512
 )
 
 type Config struct {
-	Listen                string             `json:"listen"`
-	Upstream              string             `json:"upstream"`
-	RequestTimeoutSeconds int                `json:"request_timeout_seconds,omitempty"`
-	ActiveProfile         string             `json:"active_profile"`
-	Profiles              map[string]Profile `json:"profiles"`
-	LocalAuthToken        string             `json:"local_auth_token,omitempty"`        // Optional local auth token for proxy access
-	MaxConcurrentRequests int                `json:"max_concurrent_requests,omitempty"` // Optional concurrent request limit
+	Listen                  string             `json:"listen"`
+	Upstream                string             `json:"upstream"`
+	RequestTimeoutSeconds   int                `json:"request_timeout_seconds,omitempty"`
+	MaxThinkingBudgetTokens int                `json:"max_thinking_budget_tokens,omitempty"`
+	ActiveProfile           string             `json:"active_profile"`
+	Profiles                map[string]Profile `json:"profiles"`
+	LocalAuthToken          string             `json:"local_auth_token,omitempty"`        // Optional local auth token for proxy access
+	MaxConcurrentRequests   int                `json:"max_concurrent_requests,omitempty"` // Optional concurrent request limit
 }
 
 type Profile struct {
@@ -49,10 +51,11 @@ func DefaultPath() (string, error) {
 
 func Example() Config {
 	return Config{
-		Listen:                DefaultListen,
-		Upstream:              DefaultUpstream,
-		RequestTimeoutSeconds: DefaultRequestTimeoutSeconds,
-		ActiveProfile:         "opencode-go",
+		Listen:                  DefaultListen,
+		Upstream:                DefaultUpstream,
+		RequestTimeoutSeconds:   DefaultRequestTimeoutSeconds,
+		MaxThinkingBudgetTokens: DefaultMaxThinkingBudgetTokens,
+		ActiveProfile:           "opencode-go",
 		Profiles: map[string]Profile{
 			"opencode-go": {
 				APIKeyEnv:    "OPENCODE_GO_API_KEY",
@@ -71,7 +74,7 @@ func Example() Config {
 					"opus":     "kimi-k2.6",
 					"qwen":     "qwen3.6-plus",
 					"qwen35":   "qwen3.5-plus",
-					"sonnet":   "qwen3.6-plus",
+					"sonnet":   "deepseek-v4-pro",
 					"haiku":    "deepseek-v4-flash",
 				},
 				MessageModels: []string{"minimax-m2.5", "minimax-m2.7"},
@@ -155,6 +158,9 @@ func (c *Config) applyDefaults() {
 	if c.RequestTimeoutSeconds == 0 {
 		c.RequestTimeoutSeconds = DefaultRequestTimeoutSeconds
 	}
+	if c.MaxThinkingBudgetTokens == 0 {
+		c.MaxThinkingBudgetTokens = DefaultMaxThinkingBudgetTokens
+	}
 	if c.Profiles == nil {
 		c.Profiles = map[string]Profile{}
 	}
@@ -172,6 +178,9 @@ func (c Config) Validate() error {
 	if c.RequestTimeoutSeconds < 1 || c.RequestTimeoutSeconds > 3600 {
 		return fmt.Errorf("request_timeout_seconds must be between 1 and 3600, got %d", c.RequestTimeoutSeconds)
 	}
+	if c.MaxThinkingBudgetTokens < -1 || c.MaxThinkingBudgetTokens > 8192 {
+		return fmt.Errorf("max_thinking_budget_tokens must be -1, 0, or between 1 and 8192, got %d", c.MaxThinkingBudgetTokens)
+	}
 	if len(c.Profiles) == 0 {
 		return errors.New("at least one profile is required")
 	}
@@ -179,6 +188,13 @@ func (c Config) Validate() error {
 		return fmt.Errorf("active profile %q does not exist", c.ActiveProfile)
 	}
 	return nil
+}
+
+func (c Config) ThinkingBudgetTokens() int {
+	if c.MaxThinkingBudgetTokens == 0 {
+		return DefaultMaxThinkingBudgetTokens
+	}
+	return c.MaxThinkingBudgetTokens
 }
 
 func (c Config) RequestTimeout() time.Duration {

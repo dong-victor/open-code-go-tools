@@ -18,10 +18,11 @@ type blockState struct {
 	open  bool
 }
 
-func streamOpenAIAsAnthropic(w http.ResponseWriter, body io.Reader, model string) {
+func streamOpenAIAsAnthropic(w http.ResponseWriter, body io.Reader, model string, onToolCall func(id, reasoning string)) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 	flusher, _ := w.(http.Flusher)
 	msgID := "msg_ocgt_" + strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -40,6 +41,14 @@ func streamOpenAIAsAnthropic(w http.ResponseWriter, body io.Reader, model string
 	var curBlock *blockState
 	var blockIdx int
 	var outputTokens int
+	var accumulatedReasoning strings.Builder
+
+	type streamingTool struct {
+		id         string
+		name       string
+		blockIndex int
+	}
+	activeTools := make(map[int]*streamingTool)
 
 	closeCurrentBlock := func() {
 		if curBlock != nil && curBlock.open {
@@ -101,7 +110,9 @@ func streamOpenAIAsAnthropic(w http.ResponseWriter, body io.Reader, model string
 		choice := chunk.Choices[0]
 		delta := choice.Delta
 
-		if rc := delta.ReasoningContent; rc != "" {
+		rc := reasoningText(delta.ReasoningContent, delta.ThinkingContent, delta.Thinking, delta.Reasoning, delta.ReasoningDetails)
+		if rc != "" {
+			accumulatedReasoning.WriteString(rc)
 			openBlock("thinking")
 			sendSSE(w, "content_block_delta", map[string]any{
 				"type":  "content_block_delta",
@@ -130,33 +141,58 @@ func streamOpenAIAsAnthropic(w http.ResponseWriter, body io.Reader, model string
 			}
 		}
 
-		for _, tc := range delta.ToolCalls {
-			closeCurrentBlock()
-			toolIdx := blockIdx
-			blockIdx++
-			toolID := fallbackToolID(tc.ID)
-			if tc.Function.Name != "" {
-				sendSSE(w, "content_block_start", map[string]any{
-					"type":  "content_block_start",
-					"index": toolIdx,
-					"content_block": map[string]any{
-						"type":  "tool_use",
-						"id":    toolID,
-						"name":  tc.Function.Name,
-						"input": map[string]any{},
-					},
-				})
-			}
-			if tc.Function.Arguments != "" {
-				sendSSE(w, "content_block_delta", map[string]any{
-					"type":  "content_block_delta",
-					"index": toolIdx,
-					"delta": map[string]string{"type": "input_json_delta", "partial_json": tc.Function.Arguments},
-				})
-			}
-			curBlock = &blockState{index: toolIdx, vtype: "tool_use", open: true}
-			if flusher != nil {
-				flusher.Flush()
+		if len(delta.ToolCalls) > 0 {
+			for _, tc := range delta.ToolCalls {
+				idx := 0
+				if tc.Index != nil {
+					idx = *tc.Index
+				}
+				tool, exists := activeTools[idx]
+				if !exists {
+					closeCurrentBlock()
+					toolIdx := blockIdx
+					blockIdx++
+					toolID := fallbackToolID(tc.ID)
+
+					// Cache reasoning content for this tool call ID
+					if tc.ID != "" && onToolCall != nil && accumulatedReasoning.Len() > 0 {
+						onToolCall(tc.ID, accumulatedReasoning.String())
+					}
+
+					tool = &streamingTool{
+						id:         toolID,
+						name:       tc.Function.Name,
+						blockIndex: toolIdx,
+					}
+					activeTools[idx] = tool
+
+					sendSSE(w, "content_block_start", map[string]any{
+						"type":  "content_block_start",
+						"index": toolIdx,
+						"content_block": map[string]any{
+							"type":  "tool_use",
+							"id":    toolID,
+							"name":  tc.Function.Name,
+							"input": map[string]any{},
+						},
+					})
+					curBlock = &blockState{index: toolIdx, vtype: "tool_use", open: true}
+				}
+
+				if tc.Function.Arguments != "" {
+					if curBlock == nil || curBlock.index != tool.blockIndex {
+						closeCurrentBlock()
+						curBlock = &blockState{index: tool.blockIndex, vtype: "tool_use", open: true}
+					}
+					sendSSE(w, "content_block_delta", map[string]any{
+						"type":  "content_block_delta",
+						"index": tool.blockIndex,
+						"delta": map[string]string{"type": "input_json_delta", "partial_json": tc.Function.Arguments},
+					})
+					if flusher != nil {
+						flusher.Flush()
+					}
+				}
 			}
 		}
 
@@ -185,6 +221,7 @@ func streamAnthropicMessage(w http.ResponseWriter, message map[string]any) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 	flusher, _ := w.(http.Flusher)
 	sendSSE(w, "message_start", map[string]any{

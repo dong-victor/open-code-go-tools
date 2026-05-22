@@ -183,6 +183,9 @@ func isLocalhostOrigin(origin string) bool {
 		"http://localhost",
 		"http://127.0.0.1",
 		"http://0.0.0.0",
+		"http://wails.localhost",
+		"https://wails.localhost",
+		"wails://",
 	}
 	for _, pattern := range localhostPatterns {
 		if strings.HasPrefix(origin, pattern) {

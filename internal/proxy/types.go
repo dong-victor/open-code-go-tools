@@ -31,7 +31,7 @@ type Server struct {
 	client     *http.Client
 	upstream   string
 
-	configMu        sync.RWMutex // Protects config, upstream, and client.Timeout
+	configMu sync.RWMutex // Protects config, upstream, and client.Timeout
 
 	reasoningMu     sync.Mutex
 	reasoningByTool map[string]string
@@ -54,6 +54,7 @@ type anthropicRequest struct {
 	Temperature   *float64        `json:"temperature,omitempty"`
 	TopP          *float64        `json:"top_p,omitempty"`
 	StopSequences []string        `json:"stop_sequences,omitempty"`
+	Thinking      any             `json:"thinking,omitempty"`
 	Tools         []anthropicTool `json:"tools,omitempty"`
 	ToolChoice    any             `json:"tool_choice,omitempty"`
 }
@@ -79,7 +80,7 @@ type openAIRequest struct {
 	Stop        []string        `json:"stop,omitempty"`
 	Tools       []openAITool    `json:"tools,omitempty"`
 	ToolChoice  any             `json:"tool_choice,omitempty"`
-	Thinking    map[string]any  `json:"thinking,omitempty"`
+	Thinking    any             `json:"thinking,omitempty"`
 }
 
 type openAIMessage struct {
@@ -108,7 +109,11 @@ type openAIResponse struct {
 	Choices []struct {
 		Message struct {
 			Content          string     `json:"content"`
-			ReasoningContent string     `json:"reasoning_content"`
+			ReasoningContent any        `json:"reasoning_content"`
+			ThinkingContent  any        `json:"thinking_content"`  // compatibility
+			Thinking         any        `json:"thinking"`          // compatibility
+			Reasoning        any        `json:"reasoning"`         // compatibility
+			ReasoningDetails any        `json:"reasoning_details"` // compatibility
 			ToolCalls        []toolCall `json:"tool_calls"`
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
@@ -122,7 +127,11 @@ type openAIChunk struct {
 	Choices []struct {
 		Delta struct {
 			Content          string     `json:"content"`
-			ReasoningContent string     `json:"reasoning_content"`
+			ReasoningContent any        `json:"reasoning_content"`
+			ThinkingContent  any        `json:"thinking_content"`  // compatibility
+			Thinking         any        `json:"thinking"`          // compatibility
+			Reasoning        any        `json:"reasoning"`         // compatibility
+			ReasoningDetails any        `json:"reasoning_details"` // compatibility
 			ToolCalls        []toolCall `json:"tool_calls"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
@@ -157,9 +166,12 @@ type anthropicErrorResponse struct {
 
 func New(cfg config.Config) (*Server, error) {
 	transport := &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 100,
-		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
+		IdleConnTimeout:       90 * time.Second,
+		ForceAttemptHTTP2:     true,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 60 * time.Second,
 	}
 	return &Server{
 		config:          cfg,

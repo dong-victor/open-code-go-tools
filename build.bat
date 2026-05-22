@@ -31,7 +31,19 @@ REM Build with version injection via ldflags
 set LDFLAGS=-X github.com/ethan-blue/open-code-go-tools/internal/version.Version=!VERSION!
 
 echo Building with ldflags: !LDFLAGS!
-wails build -ldflags "!LDFLAGS!"
+
+where wails >nul 2>nul
+if errorlevel 1 (
+    echo Wails CLI not found in PATH, using go run fallback...
+    go run github.com/wailsapp/wails/v2/cmd/wails@v2.12.0 build -ldflags "!LDFLAGS!"
+) else (
+    wails build -ldflags "!LDFLAGS!"
+)
+
+if errorlevel 1 (
+    echo Build failed
+    exit /b 1
+)
 
 echo.
 echo Build complete!

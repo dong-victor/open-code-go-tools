@@ -9,4 +9,4 @@ export function LaunchClaudeTerminal(arg1:string):Promise<string>;
 
 export function OpenConfigLocation():Promise<string>;
 
-export function SaveProfileConfig(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string):Promise<string>;
+export function SaveProfileConfig(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<string>;

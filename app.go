@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/proxy"
@@ -60,9 +62,7 @@ func (a *App) setupSystray() {
 				case <-ctx.Done():
 					return
 				case <-mShow.ClickedCh:
-					if a.ctx != nil {
-						wailsruntime.WindowShow(a.ctx)
-					}
+					a.showMainWindow()
 				case <-mHide.ClickedCh:
 					if a.ctx != nil {
 						wailsruntime.WindowHide(a.ctx)
@@ -81,11 +81,26 @@ func (a *App) setupSystray() {
 	})
 }
 
+func (a *App) showMainWindow() {
+	if a.ctx == nil {
+		return
+	}
+	wailsruntime.WindowShow(a.ctx)
+	wailsruntime.WindowUnminimise(a.ctx)
+	wailsruntime.WindowCenter(a.ctx)
+}
+
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.setupSystray()
+
+	// Delay the system tray setup slightly (500ms) to allow Wails WebView2 message loop
+	// to register first and avoid thread contention/focus stealing on Windows startup.
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		a.setupSystray()
+	}()
 
 	// Start Go proxy server in the background!
 	go func() {
@@ -124,6 +139,13 @@ func (a *App) startup(ctx context.Context) {
 	}()
 }
 
+// domReady is called when the frontend DOM is fully loaded and ready.
+func (a *App) domReady(ctx context.Context) {
+	a.ctx = ctx
+	// Force the main window to be shown, unminimized, centered and focused on startup
+	a.showMainWindow()
+}
+
 // shutdown is called when the app closes
 func (a *App) shutdown(ctx context.Context) {
 	if a.cancelFunc != nil {
@@ -145,8 +167,8 @@ func (a *App) GetListenAddress() string {
 	return "127.0.0.1:8787" // default fallback
 }
 
-// SaveProfileConfig saves API key, default model, aliases, and timeout settings.
-func (a *App) SaveProfileConfig(profileName, apiKey, defaultModel, sonnetAlias, haikuAlias, opusAlias, timeoutSeconds string) string {
+// SaveProfileConfig saves API key, model aliases, timeout, and thinking settings.
+func (a *App) SaveProfileConfig(profileName, apiKey, defaultModel, sonnetAlias, haikuAlias, opusAlias, timeoutSeconds, thinkingBudgetTokens string) string {
 	// 1. Resolve path
 	path, err := config.DefaultPath()
 	if err != nil {
@@ -183,6 +205,13 @@ func (a *App) SaveProfileConfig(profileName, apiKey, defaultModel, sonnetAlias, 
 		}
 		cfg.RequestTimeoutSeconds = timeout
 	}
+	if thinkingBudgetTokens != "" {
+		budget, err := strconv.Atoi(thinkingBudgetTokens)
+		if err != nil {
+			return "thinking budget must be a number of tokens"
+		}
+		cfg.MaxThinkingBudgetTokens = budget
+	}
 	if err := cfg.Validate(); err != nil {
 		return "validation error: " + err.Error()
 	}
@@ -205,12 +234,14 @@ func (a *App) InstallClaudeUserEnv() string {
 	listenAddr := a.GetListenAddress()
 	activeProfile := "opencode-go"
 	defaultModel := "kimi-k2.6"
+	thinkingBudget := config.DefaultMaxThinkingBudgetTokens
 
 	path, err := config.DefaultPath()
 	if err == nil {
 		cfg, err := config.Load(path)
 		if err == nil {
 			activeProfile = cfg.ActiveProfile
+			thinkingBudget = cfg.ThinkingBudgetTokens()
 			if p, ok := cfg.Profiles[activeProfile]; ok && p.DefaultModel != "" {
 				defaultModel = p.DefaultModel
 			}
@@ -224,6 +255,7 @@ func (a *App) InstallClaudeUserEnv() string {
 		"ANTHROPIC_MODEL":          defaultModel,
 		"OCGT_PROFILE":             activeProfile,
 	}
+	applyClaudeThinkingEnv(env, thinkingBudget)
 
 	for _, name := range legacyClaudeEnvNames() {
 		if err := unsetUserEnvironment(name); err != nil {
@@ -262,6 +294,7 @@ func (a *App) LaunchClaudeTerminal(shell string) string {
 	listenAddr := a.GetListenAddress()
 	activeProfile := "opencode-go"
 	defaultModel := "kimi-k2.6"
+	thinkingBudget := config.DefaultMaxThinkingBudgetTokens
 
 	// Try loading from config to get the latest
 	path, err := config.DefaultPath()
@@ -269,6 +302,7 @@ func (a *App) LaunchClaudeTerminal(shell string) string {
 		cfg, err := config.Load(path)
 		if err == nil {
 			activeProfile = cfg.ActiveProfile
+			thinkingBudget = cfg.ThinkingBudgetTokens()
 			if p, ok := cfg.Profiles[activeProfile]; ok {
 				if p.DefaultModel != "" {
 					defaultModel = p.DefaultModel
@@ -284,6 +318,10 @@ func (a *App) LaunchClaudeTerminal(shell string) string {
 	if err := sanitizeEnvValue(defaultModel, "model name"); err != nil {
 		return "invalid model name: " + err.Error()
 	}
+	thinkingEnv := map[string]string{}
+	applyClaudeThinkingEnv(thinkingEnv, thinkingBudget)
+	thinkingTokenValue := thinkingEnv["MAX_THINKING_TOKENS"]
+	disableThinking := thinkingEnv["CLAUDE_CODE_DISABLE_THINKING"] == "1"
 
 	baseURL := "http://" + listenAddr
 
@@ -295,6 +333,10 @@ func (a *App) LaunchClaudeTerminal(shell string) string {
 			"ANTHROPIC_API_KEY=ocgt-local-proxy",
 			fmt.Sprintf("ANTHROPIC_CUSTOM_HEADERS=X-Ocgt-Profile:%s", activeProfile),
 			fmt.Sprintf("ANTHROPIC_MODEL=%s", defaultModel),
+			fmt.Sprintf("MAX_THINKING_TOKENS=%s", thinkingTokenValue),
+		}
+		if disableThinking {
+			env = append(env, "CLAUDE_CODE_DISABLE_THINKING=1")
 		}
 
 		if shell == "cmd" {
@@ -306,7 +348,7 @@ func (a *App) LaunchClaudeTerminal(shell string) string {
 					"echo  当前模型: "+defaultModel+"&& "+
 					"echo  请在下方直接输入: claude&& "+
 					"echo =========================================================&& echo.")
-			cmd.Env = append(os.Environ(), env...)
+			cmd.Env = mergedClaudeProcessEnv(env, disableThinking)
 			if err := cmd.Run(); err != nil {
 				return "launch cmd error: " + err.Error()
 			}
@@ -318,6 +360,8 @@ func (a *App) LaunchClaudeTerminal(shell string) string {
 					"$env:ANTHROPIC_API_KEY='ocgt-local-proxy'; "+
 					"$env:ANTHROPIC_CUSTOM_HEADERS='X-Ocgt-Profile: %s'; "+
 					"$env:ANTHROPIC_MODEL='%s'; "+
+					"$env:MAX_THINKING_TOKENS='%s'; "+
+					"%s"+
 					"Clear-Host; "+
 					"Write-Host '=========================================================' -ForegroundColor Cyan; "+
 					"Write-Host ' [ocgt] Claude Code 代理终端已成功拉起！' -ForegroundColor Green; "+
@@ -326,9 +370,9 @@ func (a *App) LaunchClaudeTerminal(shell string) string {
 					"Write-Host ' 请在下方直接输入: claude' -ForegroundColor Green; "+
 					"Write-Host '=========================================================' -ForegroundColor Cyan; "+
 					"Write-Host ''",
-				baseURL, activeProfile, defaultModel, baseURL, defaultModel)
+				baseURL, activeProfile, defaultModel, thinkingTokenValue, powershellThinkingDisableScript(disableThinking), baseURL, defaultModel)
 			cmd := exec.Command("powershell.exe", "-NoExit", "-Command", psScript)
-			cmd.Env = append(os.Environ(), env...)
+			cmd.Env = mergedClaudeProcessEnv(env, disableThinking)
 			if err := cmd.Start(); err != nil {
 				return "launch powershell error: " + err.Error()
 			}
@@ -338,8 +382,8 @@ func (a *App) LaunchClaudeTerminal(shell string) string {
 		// MacOS support (Terminal.app) - use env vars via export commands
 		// The values are already validated above
 		script := fmt.Sprintf(
-			`tell application "Terminal" to do script "unset ANTHROPIC_AUTH_TOKEN && export ANTHROPIC_BASE_URL='%s' && export ANTHROPIC_API_KEY='ocgt-local-proxy' && export ANTHROPIC_CUSTOM_HEADERS='X-Ocgt-Profile: %s' && export ANTHROPIC_MODEL='%s' && clear && echo '=========================================================' && echo ' [ocgt] Claude Code 代理终端已成功拉起！' && echo ' 当前代理: %s' && echo ' 当前模型: %s' && echo ' 请在下方直接输入: claude' && echo '=========================================================' && echo ''"`,
-			baseURL, activeProfile, defaultModel, baseURL, defaultModel)
+			`tell application "Terminal" to do script "unset ANTHROPIC_AUTH_TOKEN && export ANTHROPIC_BASE_URL='%s' && export ANTHROPIC_API_KEY='ocgt-local-proxy' && export ANTHROPIC_CUSTOM_HEADERS='X-Ocgt-Profile: %s' && export ANTHROPIC_MODEL='%s' && export MAX_THINKING_TOKENS='%s' && %sclear && echo '=========================================================' && echo ' [ocgt] Claude Code 代理终端已成功拉起！' && echo ' 当前代理: %s' && echo ' 当前模型: %s' && echo ' 请在下方直接输入: claude' && echo '=========================================================' && echo ''"`,
+			baseURL, activeProfile, defaultModel, thinkingTokenValue, shellThinkingDisableScript(disableThinking), baseURL, defaultModel)
 		cmd := exec.Command("osascript", "-e", script)
 		if err := cmd.Run(); err != nil {
 			return "launch terminal error: " + err.Error()
@@ -375,7 +419,54 @@ func legacyClaudeEnvNames() []string {
 		"ANTHROPIC_DEFAULT_OPUS_MODEL",
 		"CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
 		"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY",
+		"CLAUDE_CODE_DISABLE_THINKING",
 	}
+}
+
+func applyClaudeThinkingEnv(env map[string]string, budgetTokens int) {
+	if budgetTokens < 0 {
+		env["MAX_THINKING_TOKENS"] = "0"
+		env["CLAUDE_CODE_DISABLE_THINKING"] = "1"
+		return
+	}
+	if budgetTokens == 0 {
+		budgetTokens = config.DefaultMaxThinkingBudgetTokens
+	}
+	env["MAX_THINKING_TOKENS"] = strconv.Itoa(budgetTokens)
+}
+
+func mergedClaudeProcessEnv(overrides []string, disableThinking bool) []string {
+	drop := map[string]bool{
+		"ANTHROPIC_BASE_URL":           true,
+		"ANTHROPIC_API_KEY":            true,
+		"ANTHROPIC_CUSTOM_HEADERS":     true,
+		"ANTHROPIC_MODEL":              true,
+		"MAX_THINKING_TOKENS":          true,
+		"CLAUDE_CODE_DISABLE_THINKING": !disableThinking,
+	}
+	out := make([]string, 0, len(os.Environ())+len(overrides))
+	for _, item := range os.Environ() {
+		name, _, found := strings.Cut(item, "=")
+		if found && drop[name] {
+			continue
+		}
+		out = append(out, item)
+	}
+	return append(out, overrides...)
+}
+
+func powershellThinkingDisableScript(disabled bool) string {
+	if disabled {
+		return "$env:CLAUDE_CODE_DISABLE_THINKING='1'; "
+	}
+	return "Remove-Item Env:CLAUDE_CODE_DISABLE_THINKING -ErrorAction SilentlyContinue; "
+}
+
+func shellThinkingDisableScript(disabled bool) string {
+	if disabled {
+		return "export CLAUDE_CODE_DISABLE_THINKING='1' && "
+	}
+	return "unset CLAUDE_CODE_DISABLE_THINKING && "
 }
 
 // OpenConfigLocation opens the directory containing the config file

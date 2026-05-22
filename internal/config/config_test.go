@@ -132,6 +132,22 @@ func TestRequestTimeoutDefault(t *testing.T) {
 	}
 }
 
+func TestThinkingBudgetDefault(t *testing.T) {
+	cfg := Config{
+		Listen:        "127.0.0.1:8787",
+		Upstream:      "https://opencode.ai/zen/go",
+		ActiveProfile: "test",
+		Profiles:      map[string]Profile{"test": {DefaultModel: "kimi-k2.6"}},
+	}
+	cfg.applyDefaults()
+	if cfg.MaxThinkingBudgetTokens != DefaultMaxThinkingBudgetTokens {
+		t.Fatalf("expected default thinking budget %d, got %d", DefaultMaxThinkingBudgetTokens, cfg.MaxThinkingBudgetTokens)
+	}
+	if got := cfg.ThinkingBudgetTokens(); got != DefaultMaxThinkingBudgetTokens {
+		t.Fatalf("unexpected thinking budget: %d", got)
+	}
+}
+
 func TestValidateInvalidRequestTimeout(t *testing.T) {
 	cfg := Config{
 		Listen:                "127.0.0.1:8787",
@@ -142,6 +158,19 @@ func TestValidateInvalidRequestTimeout(t *testing.T) {
 	}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for invalid request timeout")
+	}
+}
+
+func TestValidateInvalidThinkingBudget(t *testing.T) {
+	cfg := Config{
+		Listen:                  "127.0.0.1:8787",
+		Upstream:                "https://opencode.ai/zen/go",
+		MaxThinkingBudgetTokens: 8193,
+		ActiveProfile:           "test",
+		Profiles:                map[string]Profile{"test": {DefaultModel: "kimi-k2.6"}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for invalid thinking budget")
 	}
 }
 

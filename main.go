@@ -57,7 +57,14 @@ func runWailsGui() {
 		},
 		BackgroundColour: &options.RGBA{R: 248, G: 250, B: 252, A: 255}, // premium SaaS light background (#f8fafc)
 		OnStartup:        app.startup,
+		OnDomReady:       app.domReady,
 		OnShutdown:       app.shutdown,
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "github.com.ethan-blue.open-code-go-tools.ocgt",
+			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+				app.showMainWindow()
+			},
+		},
 		Bind: []interface{}{
 			app,
 		},
