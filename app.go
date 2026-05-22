@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/proxy"
+	"github.com/getlantern/systray"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
@@ -27,10 +30,57 @@ func NewApp() *App {
 	return &App{}
 }
 
+//go:embed build/appicon.png
+var appIconPng []byte
+
+//go:embed build/windows/icon.ico
+var appIconIco []byte
+
+func (a *App) setupSystray() {
+	go systray.Run(func() {
+		if runtime.GOOS == "windows" {
+			systray.SetIcon(appIconIco)
+		} else {
+			systray.SetIcon(appIconPng)
+		}
+		systray.SetTitle("ocgt")
+		systray.SetTooltip("ocgt 控制面板 - Claude API 本地代理服务")
+
+		mShow := systray.AddMenuItem("显示控制面板", "显示主窗口")
+		mHide := systray.AddMenuItem("隐藏控制面板", "隐藏主窗口")
+		systray.AddSeparator()
+		mQuit := systray.AddMenuItem("退出程序", "彻底退出代理服务")
+
+		go func() {
+			for {
+				select {
+				case <-mShow.ClickedCh:
+					if a.ctx != nil {
+						wailsruntime.WindowShow(a.ctx)
+					}
+				case <-mHide.ClickedCh:
+					if a.ctx != nil {
+						wailsruntime.WindowHide(a.ctx)
+					}
+				case <-mQuit.ClickedCh:
+					if a.ctx != nil {
+						systray.Quit()
+						wailsruntime.Quit(a.ctx)
+						return
+					}
+				}
+			}
+		}()
+	}, func() {
+		// Cleanup
+	})
+}
+
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.setupSystray()
 
 	// Start Go proxy server in the background!
 	go func() {
@@ -163,13 +213,11 @@ func (a *App) InstallClaudeUserEnv() string {
 	}
 
 	env := map[string]string{
-		"ANTHROPIC_BASE_URL":                         "http://" + listenAddr,
-		"ANTHROPIC_API_KEY":                          "ocgt-local-proxy",
-		"ANTHROPIC_CUSTOM_HEADERS":                   "X-Ocgt-Profile: " + activeProfile,
-		"CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS":     "1",
-		"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
-		"ANTHROPIC_MODEL":                            defaultModel,
-		"OCGT_PROFILE":                               activeProfile,
+		"ANTHROPIC_BASE_URL":       "http://" + listenAddr,
+		"ANTHROPIC_API_KEY":        "ocgt-local-proxy",
+		"ANTHROPIC_CUSTOM_HEADERS": "X-Ocgt-Profile: " + activeProfile,
+		"ANTHROPIC_MODEL":          defaultModel,
+		"OCGT_PROFILE":             activeProfile,
 	}
 
 	for _, name := range legacyClaudeEnvNames() {
@@ -215,7 +263,7 @@ func (a *App) LaunchClaudeTerminal(shell string) string {
 		if shell == "cmd" {
 			// Launch CMD terminal
 			cmd := exec.Command("cmd.exe", "/c", "start", "cmd.exe", "/k",
-				fmt.Sprintf("set ANTHROPIC_AUTH_TOKEN=&& set ANTHROPIC_BASE_URL=%s&& set ANTHROPIC_API_KEY=ocgt-local-proxy&& set ANTHROPIC_CUSTOM_HEADERS=X-Ocgt-Profile:%s&& set CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1&& set CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1&& set ANTHROPIC_MODEL=%s&& echo =========================================================&& echo  [ocgt] Claude Code 代理终端已成功拉起！&& echo  当前代理: %s&& echo  当前模型: %s&& echo  请在下方直接输入: claude&& echo =========================================================&& echo.",
+				fmt.Sprintf("set ANTHROPIC_AUTH_TOKEN=&& set ANTHROPIC_BASE_URL=%s&& set ANTHROPIC_API_KEY=ocgt-local-proxy&& set ANTHROPIC_CUSTOM_HEADERS=X-Ocgt-Profile:%s&& set ANTHROPIC_MODEL=%s&& echo =========================================================&& echo  [ocgt] Claude Code 代理终端已成功拉起！&& echo  当前代理: %s&& echo  当前模型: %s&& echo  请在下方直接输入: claude&& echo =========================================================&& echo.",
 					baseURL, activeProfile, defaultModel, baseURL, defaultModel))
 			if err := cmd.Run(); err != nil {
 				return "launch cmd error: " + err.Error()
@@ -223,7 +271,7 @@ func (a *App) LaunchClaudeTerminal(shell string) string {
 		} else {
 			// Launch PowerShell terminal
 			psScript := fmt.Sprintf(
-				"Remove-Item Env:ANTHROPIC_AUTH_TOKEN -ErrorAction SilentlyContinue; $env:ANTHROPIC_BASE_URL='%s'; $env:ANTHROPIC_API_KEY='ocgt-local-proxy'; $env:ANTHROPIC_CUSTOM_HEADERS='X-Ocgt-Profile: %s'; $env:CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS='1'; $env:CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY='1'; $env:ANTHROPIC_MODEL='%s'; Clear-Host; Write-Host '=========================================================' -ForegroundColor Cyan; Write-Host ' [ocgt] Claude Code 代理终端已成功拉起！' -ForegroundColor Green; Write-Host ' 当前代理: %s' -ForegroundColor Gray; Write-Host ' 当前模型: %s' -ForegroundColor Gray; Write-Host ' 请在下方直接输入: claude' -ForegroundColor Green; Write-Host '=========================================================' -ForegroundColor Cyan; Write-Host ''",
+				"Remove-Item Env:ANTHROPIC_AUTH_TOKEN -ErrorAction SilentlyContinue; $env:ANTHROPIC_BASE_URL='%s'; $env:ANTHROPIC_API_KEY='ocgt-local-proxy'; $env:ANTHROPIC_CUSTOM_HEADERS='X-Ocgt-Profile: %s'; $env:ANTHROPIC_MODEL='%s'; Clear-Host; Write-Host '=========================================================' -ForegroundColor Cyan; Write-Host ' [ocgt] Claude Code 代理终端已成功拉起！' -ForegroundColor Green; Write-Host ' 当前代理: %s' -ForegroundColor Gray; Write-Host ' 当前模型: %s' -ForegroundColor Gray; Write-Host ' 请在下方直接输入: claude' -ForegroundColor Green; Write-Host '=========================================================' -ForegroundColor Cyan; Write-Host ''",
 				baseURL, activeProfile, defaultModel, baseURL, defaultModel)
 			cmd := exec.Command("powershell.exe", "-NoExit", "-Command", psScript)
 			if err := cmd.Start(); err != nil {
@@ -234,7 +282,7 @@ func (a *App) LaunchClaudeTerminal(shell string) string {
 	case "darwin":
 		// MacOS support (Terminal.app)
 		script := fmt.Sprintf(
-			"tell application \"Terminal\" to do script \"unset ANTHROPIC_AUTH_TOKEN && export ANTHROPIC_BASE_URL='%s' && export ANTHROPIC_API_KEY='ocgt-local-proxy' && export ANTHROPIC_CUSTOM_HEADERS='X-Ocgt-Profile: %s' && export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS='1' && export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY='1' && export ANTHROPIC_MODEL='%s' && clear && echo '=========================================================' && echo ' [ocgt] Claude Code 代理终端已成功拉起！' && echo ' 当前代理: %s' && echo ' 当前模型: %s' && echo ' 请在下方直接输入: claude' && echo '=========================================================' && echo ''\"",
+			"tell application \"Terminal\" to do script \"unset ANTHROPIC_AUTH_TOKEN && export ANTHROPIC_BASE_URL='%s' && export ANTHROPIC_API_KEY='ocgt-local-proxy' && export ANTHROPIC_CUSTOM_HEADERS='X-Ocgt-Profile: %s' && export ANTHROPIC_MODEL='%s' && clear && echo '=========================================================' && echo ' [ocgt] Claude Code 代理终端已成功拉起！' && echo ' 当前代理: %s' && echo ' 当前模型: %s' && echo ' 请在下方直接输入: claude' && echo '=========================================================' && echo ''\"",
 			baseURL, activeProfile, defaultModel, baseURL, defaultModel)
 		cmd := exec.Command("osascript", "-e", script)
 		if err := cmd.Run(); err != nil {
@@ -269,6 +317,8 @@ func legacyClaudeEnvNames() []string {
 		"ANTHROPIC_DEFAULT_SONNET_MODEL",
 		"ANTHROPIC_DEFAULT_HAIKU_MODEL",
 		"ANTHROPIC_DEFAULT_OPUS_MODEL",
+		"CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
+		"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY",
 	}
 }
 

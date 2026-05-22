@@ -195,15 +195,15 @@ function renderEnvCode() {
     
     switch (currentShell) {
         case 'bash':
-            template = `export ANTHROPIC_BASE_URL="http://${listen}"\nexport ANTHROPIC_API_KEY="ocgt-local-proxy"\nexport ANTHROPIC_CUSTOM_HEADERS="X-Ocgt-Profile: ${profile}"\nexport CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS="1"\nexport CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY="1"\nexport ANTHROPIC_MODEL="${model}"`;
+            template = `export ANTHROPIC_BASE_URL="http://${listen}"\nexport ANTHROPIC_API_KEY="ocgt-local-proxy"\nexport ANTHROPIC_CUSTOM_HEADERS="X-Ocgt-Profile: ${profile}"\nexport ANTHROPIC_MODEL="${model}"`;
             codeEnv.className = 'language-bash';
             break;
         case 'cmd':
-            template = `set ANTHROPIC_BASE_URL=http://${listen}\nset ANTHROPIC_API_KEY=ocgt-local-proxy\nset ANTHROPIC_CUSTOM_HEADERS=X-Ocgt-Profile:${profile}\nset CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1\nset CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1\nset ANTHROPIC_MODEL=${model}`;
+            template = `set ANTHROPIC_BASE_URL=http://${listen}\nset ANTHROPIC_API_KEY=ocgt-local-proxy\nset ANTHROPIC_CUSTOM_HEADERS=X-Ocgt-Profile:${profile}\nset ANTHROPIC_MODEL=${model}`;
             codeEnv.className = 'language-cmd';
             break;
         default: // powershell
-            template = `$env:ANTHROPIC_BASE_URL = "http://${listen}"\n$env:ANTHROPIC_API_KEY = "ocgt-local-proxy"\n$env:ANTHROPIC_CUSTOM_HEADERS = "X-Ocgt-Profile: ${profile}"\n$env:CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = "1"\n$env:CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = "1"\n$env:ANTHROPIC_MODEL = "${model}"`;
+            template = `$env:ANTHROPIC_BASE_URL = "http://${listen}"\n$env:ANTHROPIC_API_KEY = "ocgt-local-proxy"\n$env:ANTHROPIC_CUSTOM_HEADERS = "X-Ocgt-Profile: ${profile}"\n$env:ANTHROPIC_MODEL = "${model}"`;
             codeEnv.className = 'language-powershell';
             break;
     }

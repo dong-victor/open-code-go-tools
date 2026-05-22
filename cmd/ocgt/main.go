@@ -19,7 +19,7 @@ import (
 	"github.com/ethan-blue/open-code-go-tools/internal/proxy"
 )
 
-var version = "0.1.2"
+var version = "0.1.4"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -182,12 +182,10 @@ func cmdClaudeEnv(args []string) error {
 		return err
 	}
 	env := map[string]string{
-		"ANTHROPIC_BASE_URL":                         *baseURL,
-		"ANTHROPIC_API_KEY":                          "ocgt-local-proxy",
-		"ANTHROPIC_CUSTOM_HEADERS":                   "X-Ocgt-Profile: " + name,
-		"CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS":     "1",
-		"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
-		"OCGT_PROFILE":                               name,
+		"ANTHROPIC_BASE_URL":       *baseURL,
+		"ANTHROPIC_API_KEY":        "ocgt-local-proxy",
+		"ANTHROPIC_CUSTOM_HEADERS": "X-Ocgt-Profile: " + name,
+		"OCGT_PROFILE":             name,
 	}
 	if profile.DefaultModel != "" {
 		env["ANTHROPIC_MODEL"] = profile.DefaultModel

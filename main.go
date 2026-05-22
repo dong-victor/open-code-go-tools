@@ -27,7 +27,7 @@ import (
 //go:embed all:frontend
 var assets embed.FS
 
-var version = "0.1.2"
+var version = "0.1.4"
 
 func main() {
 	args := os.Args[1:]
@@ -49,9 +49,10 @@ func runWailsGui() {
 
 	// Configure Wails options
 	err := wails.Run(&options.App{
-		Title:  "ocgt 控制面板",
-		Width:  1100,
-		Height: 850,
+		Title:             "ocgt 控制面板",
+		Width:             1100,
+		Height:            850,
+		HideWindowOnClose: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -218,12 +219,10 @@ func cmdClaudeEnv(args []string) error {
 		return err
 	}
 	env := map[string]string{
-		"ANTHROPIC_BASE_URL":                         *baseURL,
-		"ANTHROPIC_API_KEY":                          "ocgt-local-proxy",
-		"ANTHROPIC_CUSTOM_HEADERS":                   "X-Ocgt-Profile: " + name,
-		"CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS":     "1",
-		"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
-		"OCGT_PROFILE":                               name,
+		"ANTHROPIC_BASE_URL":       *baseURL,
+		"ANTHROPIC_API_KEY":        "ocgt-local-proxy",
+		"ANTHROPIC_CUSTOM_HEADERS": "X-Ocgt-Profile: " + name,
+		"OCGT_PROFILE":             name,
 	}
 	if profile.DefaultModel != "" {
 		env["ANTHROPIC_MODEL"] = profile.DefaultModel
