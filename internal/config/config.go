@@ -85,18 +85,18 @@ func Load(path string) (Config, error) {
 		var err error
 		path, err = DefaultPath()
 		if err != nil {
-			return Config{}, err
+			return Config{}, fmt.Errorf("failed to determine config path: %w", err)
 		}
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, err
+		return Config{}, fmt.Errorf("failed to read config file %q: %w", path, err)
 	}
 
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return Config{}, err
+		return Config{}, fmt.Errorf("failed to parse config file %q: %w", path, err)
 	}
 	cfg.applyDefaults()
 	return cfg, cfg.Validate()

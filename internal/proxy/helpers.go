@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -151,15 +153,15 @@ func nestedString(raw map[string]any, keys ...string) string {
 
 func requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Enable CORS for frontend API requests
-		if origin := r.Header.Get("Origin"); origin != "" {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Ocgt-Profile, X-Ocgt-Local-Token")
-		} else {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Headers", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "*")
+		// Enable CORS for frontend API requests - restrict to localhost origins
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			// Only allow localhost origins for security
+			if isLocalhostOrigin(origin) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Ocgt-Profile, X-Ocgt-Local-Token")
+			}
 		}
 
 		if r.Method == "OPTIONS" {
@@ -172,6 +174,22 @@ func requestLogger(next http.Handler) http.Handler {
 		next.ServeHTTP(rec, r)
 		log.Printf("%s %s status=%d %s", r.Method, r.URL.RequestURI(), rec.status, time.Since(start).Round(time.Millisecond))
 	})
+}
+
+// isLocalhostOrigin checks if an origin is a localhost address
+func isLocalhostOrigin(origin string) bool {
+	// Allow common localhost patterns
+	localhostPatterns := []string{
+		"http://localhost",
+		"http://127.0.0.1",
+		"http://0.0.0.0",
+	}
+	for _, pattern := range localhostPatterns {
+		if strings.HasPrefix(origin, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 // authMiddleware checks for local auth token if configured
@@ -189,7 +207,7 @@ func authMiddleware(token string, next http.Handler) http.Handler {
 			return
 		}
 
-		// Check auth token if configured
+		// Check auth token if configured using constant-time comparison
 		if token != "" {
 			providedToken := r.Header.Get("X-Ocgt-Local-Token")
 			if providedToken == "" {
@@ -199,7 +217,8 @@ func authMiddleware(token string, next http.Handler) http.Handler {
 					providedToken = strings.TrimPrefix(authHeader, "Bearer ")
 				}
 			}
-			if providedToken != token {
+			// Use constant-time comparison to prevent timing attacks
+			if subtle.ConstantTimeCompare([]byte(providedToken), []byte(token)) != 1 {
 				writeError(w, http.StatusUnauthorized, errors.New("invalid or missing auth token"))
 				return
 			}
@@ -223,4 +242,113 @@ func (r *statusRecorder) Flush() {
 	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
+}
+
+// rateLimiter implements a simple in-memory rate limiter using token bucket algorithm
+type rateLimiter struct {
+	mu       sync.Mutex
+	clients  map[string]*clientBucket
+	rate     int           // requests per second
+	burst    int           // max burst size
+	cleanup  time.Duration // cleanup interval
+	lastClean time.Time
+}
+
+type clientBucket struct {
+	tokens   float64
+	lastSeen time.Time
+}
+
+// newRateLimiter creates a new rate limiter with the specified rate and burst
+func newRateLimiter(rate, burst int) *rateLimiter {
+	return &rateLimiter{
+		clients:   make(map[string]*clientBucket),
+		rate:      rate,
+		burst:     burst,
+		cleanup:   time.Minute,
+		lastClean: time.Now(),
+	}
+}
+
+// allow checks if a request from the given client IP is allowed
+func (rl *rateLimiter) allow(clientIP string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+
+	// Cleanup old entries periodically
+	if now.Sub(rl.lastClean) > rl.cleanup {
+		for ip, bucket := range rl.clients {
+			if now.Sub(bucket.lastSeen) > rl.cleanup {
+				delete(rl.clients, ip)
+			}
+		}
+		rl.lastClean = now
+	}
+
+	bucket, exists := rl.clients[clientIP]
+	if !exists {
+		bucket = &clientBucket{
+			tokens:   float64(rl.burst),
+			lastSeen: now,
+		}
+		rl.clients[clientIP] = bucket
+	}
+
+	// Refill tokens based on time elapsed
+	elapsed := now.Sub(bucket.lastSeen).Seconds()
+	bucket.tokens = min(float64(rl.burst), bucket.tokens+elapsed*float64(rl.rate))
+	bucket.lastSeen = now
+
+	if bucket.tokens >= 1 {
+		bucket.tokens--
+		return true
+	}
+	return false
+}
+
+// rateLimitMiddleware creates a middleware that limits requests per client IP
+func rateLimitMiddleware(rl *rateLimiter, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip rate limiting for health checks and OPTIONS
+		if r.URL.Path == "/healthz" || r.Method == "OPTIONS" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Get client IP
+		clientIP := getClientIP(r)
+
+		if !rl.allow(clientIP) {
+			writeError(w, http.StatusTooManyRequests, errors.New("rate limit exceeded, please try again later"))
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// getClientIP extracts the client IP from the request
+func getClientIP(r *http.Request) string {
+	// Check X-Forwarded-For header first (for proxied requests)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Take the first IP in the chain
+		if idx := strings.Index(xff, ","); idx != -1 {
+			return strings.TrimSpace(xff[:idx])
+		}
+		return strings.TrimSpace(xff)
+	}
+
+	// Check X-Real-IP header
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+
+	// Fall back to RemoteAddr
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

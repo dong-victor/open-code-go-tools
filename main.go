@@ -19,6 +19,7 @@ import (
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/proxy"
+	"github.com/ethan-blue/open-code-go-tools/internal/version"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -26,8 +27,6 @@ import (
 
 //go:embed all:frontend
 var assets embed.FS
-
-var version = "0.1.5"
 
 func main() {
 	args := os.Args[1:]
@@ -86,7 +85,7 @@ func runCLI(args []string) error {
 	case "key":
 		return cmdKey(args[1:])
 	case "version":
-		fmt.Println(version)
+		fmt.Println(version.Version)
 		return nil
 	case "help", "-h", "--help":
 		usage()

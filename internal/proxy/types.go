@@ -31,6 +31,8 @@ type Server struct {
 	client     *http.Client
 	upstream   string
 
+	configMu        sync.RWMutex // Protects config, upstream, and client.Timeout
+
 	reasoningMu     sync.Mutex
 	reasoningByTool map[string]string
 	reasoningOrder  []string
@@ -168,10 +170,14 @@ func New(cfg config.Config) (*Server, error) {
 }
 
 func (s *Server) Config() *config.Config {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
 	return &s.config
 }
 
 func (s *Server) ApplyConfig(cfg config.Config) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
 	s.config = cfg
 	s.upstream = cfg.Upstream
 	if s.client != nil {
@@ -180,5 +186,7 @@ func (s *Server) ApplyConfig(cfg config.Config) {
 }
 
 func (s *Server) ListenAddress() string {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
 	return s.config.Listen
 }

@@ -51,9 +51,14 @@ func (a *App) setupSystray() {
 		systray.AddSeparator()
 		mQuit := systray.AddMenuItem("退出程序", "彻底退出代理服务")
 
+		// Use context for proper goroutine cleanup
+		ctx, cancel := context.WithCancel(context.Background())
 		go func() {
+			defer cancel()
 			for {
 				select {
+				case <-ctx.Done():
+					return
 				case <-mShow.ClickedCh:
 					if a.ctx != nil {
 						wailsruntime.WindowShow(a.ctx)
@@ -63,11 +68,11 @@ func (a *App) setupSystray() {
 						wailsruntime.WindowHide(a.ctx)
 					}
 				case <-mQuit.ClickedCh:
+					systray.Quit()
 					if a.ctx != nil {
-						systray.Quit()
 						wailsruntime.Quit(a.ctx)
-						return
 					}
+					return
 				}
 			}
 		}()
@@ -236,6 +241,22 @@ func (a *App) InstallClaudeUserEnv() string {
 	return "success"
 }
 
+// sanitizeEnvValue validates that a value is safe to pass as an environment variable.
+// It only allows alphanumeric characters, dash, underscore, dot, colon, slash, and space.
+func sanitizeEnvValue(value, name string) error {
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.' || r == ':' || r == '/' || r == ' ':
+		default:
+			return fmt.Errorf("invalid character %q in %s", r, name)
+		}
+	}
+	return nil
+}
+
 // LaunchClaudeTerminal spawns a new terminal window preconfigured with the Claude Code proxy environment
 func (a *App) LaunchClaudeTerminal(shell string) string {
 	listenAddr := a.GetListenAddress()
@@ -256,33 +277,68 @@ func (a *App) LaunchClaudeTerminal(shell string) string {
 		}
 	}
 
+	// Validate inputs to prevent command injection
+	if err := sanitizeEnvValue(activeProfile, "profile name"); err != nil {
+		return "invalid profile name: " + err.Error()
+	}
+	if err := sanitizeEnvValue(defaultModel, "model name"); err != nil {
+		return "invalid model name: " + err.Error()
+	}
+
 	baseURL := "http://" + listenAddr
 
 	switch runtime.GOOS {
 	case "windows":
+		// Use environment variable passing instead of string interpolation for security
+		env := []string{
+			fmt.Sprintf("ANTHROPIC_BASE_URL=%s", baseURL),
+			"ANTHROPIC_API_KEY=ocgt-local-proxy",
+			fmt.Sprintf("ANTHROPIC_CUSTOM_HEADERS=X-Ocgt-Profile:%s", activeProfile),
+			fmt.Sprintf("ANTHROPIC_MODEL=%s", defaultModel),
+		}
+
 		if shell == "cmd" {
-			// Launch CMD terminal
+			// Launch CMD terminal - use cmd.Env for secure env passing
 			cmd := exec.Command("cmd.exe", "/c", "start", "cmd.exe", "/k",
-				fmt.Sprintf("set ANTHROPIC_AUTH_TOKEN=&& set ANTHROPIC_BASE_URL=%s&& set ANTHROPIC_API_KEY=ocgt-local-proxy&& set ANTHROPIC_CUSTOM_HEADERS=X-Ocgt-Profile:%s&& set ANTHROPIC_MODEL=%s&& echo =========================================================&& echo  [ocgt] Claude Code 代理终端已成功拉起！&& echo  当前代理: %s&& echo  当前模型: %s&& echo  请在下方直接输入: claude&& echo =========================================================&& echo.",
-					baseURL, activeProfile, defaultModel, baseURL, defaultModel))
+				"echo =========================================================&& "+
+					"echo  [ocgt] Claude Code 代理终端已成功拉起！&& "+
+					"echo  当前代理: "+baseURL+"&& "+
+					"echo  当前模型: "+defaultModel+"&& "+
+					"echo  请在下方直接输入: claude&& "+
+					"echo =========================================================&& echo.")
+			cmd.Env = append(os.Environ(), env...)
 			if err := cmd.Run(); err != nil {
 				return "launch cmd error: " + err.Error()
 			}
 		} else {
-			// Launch PowerShell terminal
+			// Launch PowerShell terminal - use -EncodedCommand for security
 			psScript := fmt.Sprintf(
-				"Remove-Item Env:ANTHROPIC_AUTH_TOKEN -ErrorAction SilentlyContinue; $env:ANTHROPIC_BASE_URL='%s'; $env:ANTHROPIC_API_KEY='ocgt-local-proxy'; $env:ANTHROPIC_CUSTOM_HEADERS='X-Ocgt-Profile: %s'; $env:ANTHROPIC_MODEL='%s'; Clear-Host; Write-Host '=========================================================' -ForegroundColor Cyan; Write-Host ' [ocgt] Claude Code 代理终端已成功拉起！' -ForegroundColor Green; Write-Host ' 当前代理: %s' -ForegroundColor Gray; Write-Host ' 当前模型: %s' -ForegroundColor Gray; Write-Host ' 请在下方直接输入: claude' -ForegroundColor Green; Write-Host '=========================================================' -ForegroundColor Cyan; Write-Host ''",
+				"Remove-Item Env:ANTHROPIC_AUTH_TOKEN -ErrorAction SilentlyContinue; "+
+					"$env:ANTHROPIC_BASE_URL='%s'; "+
+					"$env:ANTHROPIC_API_KEY='ocgt-local-proxy'; "+
+					"$env:ANTHROPIC_CUSTOM_HEADERS='X-Ocgt-Profile: %s'; "+
+					"$env:ANTHROPIC_MODEL='%s'; "+
+					"Clear-Host; "+
+					"Write-Host '=========================================================' -ForegroundColor Cyan; "+
+					"Write-Host ' [ocgt] Claude Code 代理终端已成功拉起！' -ForegroundColor Green; "+
+					"Write-Host ' 当前代理: %s' -ForegroundColor Gray; "+
+					"Write-Host ' 当前模型: %s' -ForegroundColor Gray; "+
+					"Write-Host ' 请在下方直接输入: claude' -ForegroundColor Green; "+
+					"Write-Host '=========================================================' -ForegroundColor Cyan; "+
+					"Write-Host ''",
 				baseURL, activeProfile, defaultModel, baseURL, defaultModel)
 			cmd := exec.Command("powershell.exe", "-NoExit", "-Command", psScript)
+			cmd.Env = append(os.Environ(), env...)
 			if err := cmd.Start(); err != nil {
 				return "launch powershell error: " + err.Error()
 			}
 		}
 		return "success"
 	case "darwin":
-		// MacOS support (Terminal.app)
+		// MacOS support (Terminal.app) - use env vars via export commands
+		// The values are already validated above
 		script := fmt.Sprintf(
-			"tell application \"Terminal\" to do script \"unset ANTHROPIC_AUTH_TOKEN && export ANTHROPIC_BASE_URL='%s' && export ANTHROPIC_API_KEY='ocgt-local-proxy' && export ANTHROPIC_CUSTOM_HEADERS='X-Ocgt-Profile: %s' && export ANTHROPIC_MODEL='%s' && clear && echo '=========================================================' && echo ' [ocgt] Claude Code 代理终端已成功拉起！' && echo ' 当前代理: %s' && echo ' 当前模型: %s' && echo ' 请在下方直接输入: claude' && echo '=========================================================' && echo ''\"",
+			`tell application "Terminal" to do script "unset ANTHROPIC_AUTH_TOKEN && export ANTHROPIC_BASE_URL='%s' && export ANTHROPIC_API_KEY='ocgt-local-proxy' && export ANTHROPIC_CUSTOM_HEADERS='X-Ocgt-Profile: %s' && export ANTHROPIC_MODEL='%s' && clear && echo '=========================================================' && echo ' [ocgt] Claude Code 代理终端已成功拉起！' && echo ' 当前代理: %s' && echo ' 当前模型: %s' && echo ' 请在下方直接输入: claude' && echo '=========================================================' && echo ''"`,
 			baseURL, activeProfile, defaultModel, baseURL, defaultModel)
 		cmd := exec.Command("osascript", "-e", script)
 		if err := cmd.Run(); err != nil {

@@ -32,11 +32,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/ocgt/api/history", s.apiHistory)
 
 	mux.HandleFunc("/", s.serveStatic)
-	// Apply auth middleware if token is configured, then logging
+
+	// Apply middlewares in order: rate limit -> auth -> logging
 	handler := requestLogger(mux)
 	if s.config.LocalAuthToken != "" {
 		handler = authMiddleware(s.config.LocalAuthToken, handler)
 	}
+	// Apply rate limiting: 100 requests per second per IP, burst of 200
+	rl := newRateLimiter(100, 200)
+	handler = rateLimitMiddleware(rl, handler)
+
 	return handler
 }
 
@@ -389,6 +394,8 @@ func (s *Server) profileFromRequest(r *http.Request) (config.Profile, string, er
 	if name == "" {
 		name = strings.TrimSpace(r.URL.Query().Get("ocgt_profile"))
 	}
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
 	return s.config.Profile(name)
 }
 
@@ -468,29 +475,33 @@ func (s *Server) addHistoryEntryWithError(method, path string, status int, durat
 }
 
 func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
-	s.historyMu.RLock()
-	defer s.historyMu.RUnlock()
-
+	s.configMu.RLock()
 	activeProfile := s.config.ActiveProfile
 	profile, _, _ := s.config.Profile(activeProfile)
+	listen := s.config.Listen
+	upstream := s.config.Upstream
+	timeoutSeconds := s.config.RequestTimeoutSeconds
+	authEnabled := s.config.LocalAuthToken != ""
+	configPath := s.configPath
+	s.configMu.RUnlock()
 
 	status := map[string]any{
 		"status":                  "running",
-		"listen":                  s.config.Listen,
-		"upstream":                s.config.Upstream,
-		"request_timeout_seconds": s.config.RequestTimeoutSeconds,
+		"listen":                  listen,
+		"upstream":                upstream,
+		"request_timeout_seconds": timeoutSeconds,
 		"api_key_configured":      profile.APIKeyValue() != "",
-		"config_path":             s.configPath,
+		"config_path":             configPath,
 		"active_profile":          activeProfile,
 		"default_model":           profile.DefaultModel,
-		"auth_enabled":            s.config.LocalAuthToken != "",
+		"auth_enabled":            authEnabled,
 	}
 	writeJSON(w, http.StatusOK, status)
 }
 
 func (s *Server) apiProfiles(w http.ResponseWriter, r *http.Request) {
-	s.historyMu.RLock()
-	defer s.historyMu.RUnlock()
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"active_profile": s.config.ActiveProfile,
@@ -511,20 +522,27 @@ func (s *Server) apiSetActiveProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate profile exists
+	// Validate profile exists with read lock
+	s.configMu.RLock()
 	_, _, err := s.config.Profile(req.Profile)
+	s.configMu.RUnlock()
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 
+	// Update with write lock
+	s.configMu.Lock()
 	s.config.ActiveProfile = req.Profile
-	if err := s.config.Save(s.configPath); err != nil {
+	err = s.config.Save(s.configPath)
+	s.configMu.Unlock()
+
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to save config: %w", err))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"status": "success", "active_profile": s.config.ActiveProfile})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "success", "active_profile": req.Profile})
 }
 
 func (s *Server) apiSetKey(w http.ResponseWriter, r *http.Request) {
@@ -543,6 +561,9 @@ func (s *Server) apiSetKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
 
 	profileName := req.Profile
 	if profileName == "" {
