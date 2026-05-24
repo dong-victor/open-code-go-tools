@@ -5,7 +5,7 @@
 // §1 — Constants & Global State
 // ══════════════════════════════════════════════════════
 
-const APP_VERSION = 'v0.1.9';
+const APP_VERSION = 'v0.2.0';
 const DEFAULT_CLOSE_BEHAVIOR = 'prompt';
 const CLOSE_BEHAVIORS = new Set(['prompt', 'minimize', 'exit']);
 const ALLOWED_THINKING_BUDGETS = ['256', '512', '1024', '2048', '-1'];
