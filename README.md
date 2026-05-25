@@ -105,3 +105,6 @@ wails dev          # 开发模式
 ## 📄 许可证
 
 MIT License
+
+## 邀请链接
+可以走此链接订购go计划：https://opencode.ai/go?ref=RRWQDE4CWW
