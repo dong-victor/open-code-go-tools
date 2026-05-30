@@ -10,8 +10,23 @@ permissions:
 
 jobs:
   build:
-    name: Build Windows Wails GUI
-    runs-on: windows-latest
+    name: Build Wails GUI (${{ matrix.platform }})
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows/amd64
+            name: ocgt-windows-amd64.exe
+            path: build/bin/ocgt.exe
+          - os: macos-latest
+            platform: darwin/universal
+            name: ocgt-macos-universal.app
+            path: build/bin/ocgt.app
+          - os: ubuntu-latest
+            platform: linux/amd64
+            name: ocgt-linux-amd64
+            path: build/bin/ocgt
+    runs-on: ${{ matrix.os }}
     
     steps:
       - name: Checkout repository
@@ -22,6 +37,10 @@ jobs:
         with:
           go-version: '1.22'
 
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev build-essential pkg-config
+
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 
@@ -29,21 +48,29 @@ jobs:
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          wails build -platform windows/amd64 -clean -ldflags "-s -w -X github.com/ethan-blue/open-code-go-tools/internal/version.Version=${VERSION}"
+          wails build -platform ${{ matrix.platform }} -clean -ldflags "-s -w -X github.com/ethan-blue/open-code-go-tools/internal/version.Version=${VERSION}"
 
-      - name: Prepare Windows Asset
-        shell: pwsh
+      - name: Archive macOS app
+        if: runner.os == 'macOS'
         run: |
-          New-Item -ItemType Directory -Path dist -Force
-          $binary = Get-ChildItem -Path build/bin -File -Filter "ocgt*.exe" | Select-Object -First 1
-          if (-not $binary) { throw "Built executable not found" }
-          Copy-Item -LiteralPath $binary.FullName -Destination dist/ocgt-windows-amd64.exe -Force
+          cd build/bin
+          tar -czvf ocgt-macos-universal.tar.gz ocgt.app
+
+      - name: Prepare Assets
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ "${{ runner.os }}" == "macOS" ]; then
+            mv build/bin/ocgt-macos-universal.tar.gz dist/ocgt-macos-universal.tar.gz
+          else
+            mv "${{ matrix.path }}" "dist/${{ matrix.name }}"
+          fi
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ocgt-windows-amd64.exe
-          path: dist/ocgt-windows-amd64.exe
+          name: ${{ matrix.platform != 'darwin/universal' && matrix.name || 'ocgt-macos-universal.tar.gz' }}
+          path: dist/*
           retention-days: 1
 
   publish:
@@ -70,16 +97,9 @@ jobs:
         with:
           name: ocgt ${{ github.ref_name }} GUI
           body: |
-            ocgt ${{ github.ref_name }} focuses on Claude Code compatibility, thinking/reasoning streaming, startup latency, and a safer GUI configuration flow.
+            ocgt ${{ github.ref_name }}
 
-            Highlights:
-            - Replaces the raw Thinking Token input with fixed thinking strength options.
-            - Supports Claude Code thinking environment variables, including MAX_THINKING_TOKENS and CLAUDE_CODE_DISABLE_THINKING.
-            - Converts real upstream reasoning/thinking fields into Anthropic thinking stream blocks when available.
-            - Reduces initial GUI wait time and prevents duplicate app instances.
-            - Fixes mojibake in user-facing text and release metadata.
-
-            Download `ocgt-windows-amd64.exe` for Windows.
+            This release provides native binaries for Windows, macOS, and Linux.
           files: |
             dist/*
           generate_release_notes: true

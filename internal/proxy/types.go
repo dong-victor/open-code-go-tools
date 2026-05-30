@@ -108,6 +108,7 @@ type openAIRequest struct {
 	Model       string          `json:"model"`
 	Messages    []openAIMessage `json:"messages"`
 	Stream      bool            `json:"stream,omitempty"`
+	StreamOptions map[string]bool `json:"stream_options,omitempty"`
 	MaxTokens   int             `json:"max_tokens,omitempty"`
 	Temperature *float64        `json:"temperature,omitempty"`
 	TopP        *float64        `json:"top_p,omitempty"`

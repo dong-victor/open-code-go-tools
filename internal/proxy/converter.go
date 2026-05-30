@@ -17,6 +17,9 @@ func anthropicToOpenAI(in anthropicRequest) openAIRequest {
 		TopP:        in.TopP,
 		Stop:        in.StopSequences,
 	}
+	if out.Stream {
+		out.StreamOptions = map[string]bool{"include_usage": true}
+	}
 	
 	// Clamp MaxTokens to prevent "Range of max_tokens should be [1, 65536]" errors
 	// (common with Qwen and other non-OpenAI standard providers)

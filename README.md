@@ -2,7 +2,7 @@
 
 > 🌐 **[English Version](docs/README.en-US.md)**
 
-`ocgt`（OpenCode Go Tools）是专为 **Claude Code** 与 **OpenCode Go**（opencode.ai）定制的原生桌面控制中心。内置超低延迟本地代理（Anthropic ↔ OpenAI Chat Completions 协议互转），配合极简直觉的中英双语 GUI，一键拉起开发控制台。
+`ocgt`（OpenCode Go Tools）是专为 **Claude Code** 与 **OpenCode Go**（opencode.ai）定制的原生桌面控制中心。内置超低延迟本地代理（Anthropic ↔ OpenAI Chat Completions 协议互转），提供中英双语 GUI，支持一键启动配置终端。
 
 ---
 
@@ -13,20 +13,20 @@
 - 实时监控代理监听端口（默认 `127.0.0.1:8787`）及上游 API 状态
 - 可视化配置文件路径，一键打开所在文件夹
 
-### ⚙️ 极简配置管理
+### ⚙️ 配置管理
 ![Configuration Settings](assets/2026-05-30_213821.png)
-- 填入 API Key 即秒级热重载生效
+- 填入 API Key 即配置热重载生效
 - **模型映射**：Sonnet / Haiku / Opus 自由映射上游平替
-- **思考强度**：快速 / 慢速 / 深度 / 极客 / 关闭，杜绝误配
+- **思考强度**：快速 / 慢速 / 深度 / 极客 / 关闭，防止误配
 - **模型回退链**：主模型失败自动尝试 FallbackChain
 
-### 💻 一键终端唤醒
+### 💻 终端启动
 ![Terminal Activation](assets/2026-05-30_213831.png)
 - 选 PowerShell / Bash / CMD，一键拉起已注入全部代理变量的原生终端
 - 进入窗口直接 `claude` 即可开始
 - 外部终端支持一键复制环境变量 & CC Switch JSON 导入
 
-### 📡 流量雷达监控
+### 📡 流量监控
 - 实时捕获 Claude Code API 请求日志、耗时、状态码
 - 汇总成功率与平均延迟
 

@@ -15,7 +15,7 @@ Developers do not need to manually configure tedious environment variables or mo
 * **Real-time Monitoring**: Monitor local proxy listening ports (default `127.0.0.1:8787`) and upstream API node status.
 * **Quick Access**: Visualize local configuration file paths and open the configuration directory with one click.
 
-### ⚙️ Premium Configuration Management
+### ⚙️ Configuration Management
 ![Configuration Settings](../assets/2026-05-30_213821.png)
 * **Optimized for OpenCode Go**: Enter your API Key and hit save to apply hot-reloaded configurations in seconds.
 * **Model Alias Mapping**: Custom-map Claude Sonnet, Haiku, and Opus models to upstream alternatives seamlessly.
@@ -27,7 +27,7 @@ Developers do not need to manually configure tedious environment variables or mo
 * **Instant Coding**: Directly type `claude` and press Enter to start your AI coding session!
 * **External Integration**: Provide quick environment variables and CC Switch JSON configurations for existing terminal sessions or IDE windows.
 
-### 📡 Traffic Radar Logs
+### 📡 Traffic Logs
 * **Real-time Capture**: Real-time capture and visualization of API request logs, latency, methods, and status codes originating from the Claude Code client, summarized with success rates and average response latency.
 
 ---

@@ -1,28 +1,28 @@
 # Release Notes - v2.0.0
 
 ## 🌐 语言选择 / Language
-* [简体中文 (Simplified Chinese)](#-ocgt-v200---重大更新版本发布)
+* [简体中文 (Simplified Chinese)](#-ocgt-v200---v2.0.0 版本说明 (Release Notes))
 * [English](#-ocgt-v200---major-update-release)
 
 ---
 
-# 🇨🇳 ocgt v2.0.0 - 重大更新版本发布
+# 🇨🇳 ocgt v2.0.0 - v2.0.0 版本说明 (Release Notes)
 
-本次 2.0.0 版本包含全面的系统升级，完整的 MD 文档更新与最新的控制面板截图。
+本次更新主要包括多平台构建支持、增加 Qwen3.7 模型、修复 Token 统计以及界面截图的同步更新。
 支持多系统（Windows, macOS, Linux）架构。
-- 移除了旧版的 AI 生成界面截图，全面替换为最新的实机截图。
+- 更新了文档中的控制面板截图。
 - 同步最新的 OpenCode Go 工作流。
-- 更多底层稳定性改进。
+- 修复了若干代理服务的稳定性问题。
 
 ---
 
-# 🇺🇸 ocgt v2.0.0 - Major Update Release
+# 🇺🇸 ocgt v2.0.0 - Release Notes for v2.0.0
 
-This 2.0.0 release includes comprehensive system upgrades, fully updated MD documentation, and the latest control panel screenshots.
+This update introduces multi-platform builds, adds the Qwen3.7 model, fixes token usage stats, and updates interface screenshots.
 Supports multi-OS (Windows, macOS, Linux) architectures.
-- Removed old AI-generated screenshots, replaced with the latest actual screenshots.
+- Updated control panel screenshots in the documentation.
 - Synced with the newest OpenCode Go workflow.
-- More underlying stability improvements.
+- Fixed proxy service stability issues.
 
 ---
 

@@ -22,7 +22,9 @@ const MODEL_REGISTRY = [
 
     { id: 'kimi-k2.5', label: 'kimi-k2.5', recommended: false, category: 'Kimi' },
 
-    { id: 'qwen3.6-plus', label: 'qwen3.6-plus', recommended: true, category: 'Qwen' },
+    { id: 'qwen3.7-max', label: 'Qwen3.7 Max', recommended: true, category: 'Qwen' },
+
+    { id: 'qwen3.6-plus', label: 'qwen3.6-plus', recommended: false, category: 'Qwen' },
 
     { id: 'qwen3.5-plus', label: 'qwen3.5-plus', recommended: false, category: 'Qwen' },
 
