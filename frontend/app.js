@@ -923,7 +923,7 @@ function cacheDom() {
                 syncModelsBtn.disabled = true;
                 const oldText = syncModelsBtn.textContent;
                 syncModelsBtn.textContent = '...';
-                const res = await fetch(`${API_BASE}/v1/models`);
+                const res = await fetch(`https://opencode.ai/zen/go/v1/models`);
                 if (!res.ok) throw new Error('API failed');
                 const data = await res.json();
                 if (data && data.data && Array.isArray(data.data)) {
