@@ -14,7 +14,7 @@ const INTEGRATION_IDS = ['quick', 'cli', 'vscode', 'claude-desktop'];
 
 // Add/remove models here — all <select> dropdowns update automatically.
 
-const MODEL_REGISTRY = [
+let MODEL_REGISTRY = [
 
     // { id, label, recommended?, category }
 
@@ -190,6 +190,7 @@ const i18n = {
         env_api_timeout: "API Timeout (ms)",
         env_mcp_timeout: "MCP Timeout (ms)",
         btn_edit_settings_json: "编辑 settings.json",
+        btn_sync_models: "同步上游模型",
         opt_custom: "自定义模型...",
         btn_save_config: "保存配置",
         btn_repair_env: "一键修复 Claude Code 系统环境变量",
@@ -533,6 +534,7 @@ const i18n = {
         env_api_timeout: "API Timeout (ms)",
         env_mcp_timeout: "MCP Timeout (ms)",
         btn_edit_settings_json: "Edit settings.json",
+        btn_sync_models: "Sync Models",
         opt_custom: "Custom model...",
         btn_save_config: "Save Configuration",
         btn_repair_env: "One-click Repair Claude Code System Env",
@@ -913,6 +915,45 @@ function cacheDom() {
     dom.btnSaveLogPrefs = document.getElementById('save-log-prefs-btn');
     dom.btnOpenLogDir = document.getElementById('open-log-dir-btn');
     dom.btnSaveAllConfig = document.getElementById('save-all-config-btn');
+
+    const syncModelsBtn = document.getElementById('btn-sync-models');
+    if (syncModelsBtn) {
+        syncModelsBtn.addEventListener('click', async () => {
+            try {
+                syncModelsBtn.disabled = true;
+                const oldText = syncModelsBtn.textContent;
+                syncModelsBtn.textContent = '...';
+                const res = await fetch(`${API_BASE}/v1/models`);
+                if (!res.ok) throw new Error('API failed');
+                const data = await res.json();
+                if (data && data.data && Array.isArray(data.data)) {
+                    const newModels = data.data.map(m => ({
+                        id: m.id,
+                        label: m.id,
+                        recommended: false,
+                        category: 'Synced'
+                    }));
+                    // Keep original recommended models if not in the list, or just append new ones
+                    const existingIds = new Set(MODEL_REGISTRY.map(m => m.id));
+                    let added = 0;
+                    for (const nm of newModels) {
+                        if (!existingIds.has(nm.id)) {
+                            MODEL_REGISTRY.push(nm);
+                            added++;
+                        }
+                    }
+                    populateModelSelects();
+                    showToast(`同步成功，新增 ${added} 个模型`);
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('获取模型失败，请检查上游 API Key 与网络连接', 'error');
+            } finally {
+                syncModelsBtn.disabled = false;
+                syncModelsBtn.textContent = t('btn_sync_models');
+            }
+        });
+    }
     dom.btnCancelConfig = document.getElementById('cancel-config-btn');
     dom.btnInstallEnv = document.getElementById('install-env-btn');
     dom.btnRepairAll = document.getElementById('repair-all-btn');

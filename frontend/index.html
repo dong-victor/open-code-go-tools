@@ -251,7 +251,10 @@
                                 </div>
                                 <div class="sett-field-row sett-field-row--2">
                                     <div class="field">
-                                        <label for="default-model-input" data-i18n="sett_default_model">全局默认模型</label>
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                            <label for="default-model-input" data-i18n="sett_default_model" style="margin-bottom: 0;">全局默认模型</label>
+                                            <button id="btn-sync-models" class="btn-secondary btn-sm" type="button" style="padding: 2px 8px; font-size: 12px; height: auto;" data-i18n="btn_sync_models">同步模型</button>
+                                        </div>
                                         <div class="select-wrap">
                                             <select id="default-model-input" data-model-source="default"></select>
                                             <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
