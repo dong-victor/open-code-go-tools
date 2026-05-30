@@ -12,6 +12,7 @@ jobs:
   build:
     name: Build Wails GUI (${{ matrix.platform }})
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -22,7 +23,7 @@ jobs:
             platform: darwin/universal
             name: ocgt-macos-universal.app
             path: build/bin/ocgt.app
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             platform: linux/amd64
             name: ocgt-linux-amd64
             path: build/bin/ocgt
@@ -39,7 +40,7 @@ jobs:
 
       - name: Install Linux Dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev build-essential pkg-config libayatana-appindicator3-dev
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev build-essential pkg-config libayatana-appindicator3-dev
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
