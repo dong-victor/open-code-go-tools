@@ -184,3 +184,47 @@
 - **根因:** `apiHistory`（`/ocgt/api/history`）只读 `s.history` 内存环形缓冲区（最多 100 条），启动时 nil，只显示当前会话新产生的请求。而统计 API（`/summary`/`/trend`/`/models`）已使用 `readJSONLLogs()` 从持久化 JSONL 文件读取
 - **决策:** `apiHistory` 改为：先读 `readJSONLLogs(days)`（从 JSONL 持久日志读），再用内存中的新增条目补充去重，最后按时间倒序合并输出。与统计 API 保持一致的持久化策略
 - **影响范围:** 重启程序后流量明细 Tab 仍能显示历史日志数据
+
+## 2026-06-10 14:35: 修复价格和 Token 重复计算问题
+- **文件:**
+  - `internal/proxy/handler.go` — 重试循环不再记录历史（仅在最终失败或成功时记录）；TotalTokens 公式加入 CacheReadTokens
+  - `internal/proxy/proxy_test.go` — 适配 history 断言从 6 条改为 1 条
+- **根因:**
+  1. **请求次数虚高：** retry 循环中每次失败的重试都调用 `addHistoryEntryWithUsageAndError`，导致 1 次用户请求在 JSONL 中产生最多 6 条记录，stats 统计时全部计入 `TotalRequests++`
+  2. **TotalTokens 漏字段：** `handler.go:1162` 的 TotalTokens 公式 `Input + Output + CacheCreation` 漏了 `CacheReadTokens`
+  3. **注释误导：** `apiHistory` 注释声称 "readJSONLLogs 内部有去重"，实际该函数并无去重逻辑
+- **决策:**
+  - 重试失败改为仅在最后一次尝试（break 前）写入历史，中间的重试尝试不记录
+  - 4xx 非 429 的即时返回仍保留单次记录（正确）
+  - 成功路径记录不变
+  - TotalTokens 公式增加 `+ usage.CacheReadTokens`
+  - 删除不实的去重注释
+- **影响范围:** 修复后 1 次用户请求不再因重试产生多条记录，请求次数统计恢复正常
+
+## 2026-06-10 14:50: 修复 EstimateCost 双重计费 + TotalTokens 回退 + 模型 Cache 命中率修正
+- **文件:**
+  - `internal/pricing/pricing.go` — EstimateCost 将 cacheReadTokens 从 inputTokens 中减去再计 input 价
+  - `internal/proxy/handler.go` — TotalTokens 回退为 `Input+Output+CacheCreation`（CacheRead 已包含在 Input 中）
+  - `internal/proxy/stats.go` — modelBreakdown 改用独立累加器，CacheHitRate 使用纯 CacheReadTokens
+- **根因:**
+  1. **EstimateCost 双重计费（严重）：** `input_tokens` 已包含 `cache_read_tokens`（后者是子集），但原来对全部 input 按全价计费，又对 cache_read 按缓存价计费，导致缓存读取部分被计了两次。以 deepseek-v4-flash 为例，输入价 $0.14、缓存价 $0.0028，有 cache 时费用虚高约 2x
+  2. **TotalTokens 多加了 CacheReadTokens：** 上一轮修复中错误地加入了 CacheReadTokens，但 InputTokens 已包含它。回退到 `Input+Output+CacheCreation`
+  3. **modelBreakdown 命中率不准：** 使用 `CacheRead + CacheCreation` 做分子计算命中率，创建（写入）不应计入命中
+- **决策:**
+  - EstimateCost: `nonCacheInput = inputTokens - cacheReadTokens` 后按全价计，cacheReadTokens 单独按缓存价计
+  - TotalTokens: 回退到 `Input+Output+CacheCreation`（与 6-3 的修复一致）
+  - modelBreakdown: 新建 `modelBreakdownAccum` 结构体，分别累加 CacheRead 和 CacheCreation，命中率只用 CacheRead
+- **影响范围:** 费用估算降低（修复前有 cache 请求被虚高）；TotalTokens 恢复正确；模型表 Cache 命中率略微降低（之前误含 CacheCreation）
+
+## 2026-06-10 15:45: 修复 extractUsageFromAnthropicStream 遗漏 message_start + 优化流式 message_delta 补全 input_tokens
+- **文件:**
+  - `internal/proxy/handler.go` — extractUsageFromAnthropicStream 增加 message_start 事件解析（input_tokens/cache 字段）
+  - `internal/proxy/streamer.go` — 合成 message_delta 增加 input_tokens 字段
+- **原因:**
+  1. **extractUsageFromAnthropicStream 缺字段：** 该函数只捕获 `message_delta` 事件，但 Anthropic 流式协议中 `input_tokens` / `cache_creation_input_tokens` / `cache_read_input_tokens` 在 `message_start.message.usage` 中（非 `message_delta.usage`），导致走 Anthropic 原生流式的请求丢失了 input 和 cache 字段
+  2. **流式 message_delta 缺 input_tokens：** `streamOpenAIAsAnthropic` 的合成 `message_delta` 只发了 output/cache 字段，下游客户端收不到真实 input_tokens
+- **决策:**
+  - extractUsageFromAnthropicStream 同时捕获 `message_start` 和 `message_delta`，按事件类型分别从 `message.usage`（嵌套）和 `usage`（顶层）解析
+  - streamOpenAIAsAnthropic 的 `message_delta` 增加 `input_tokens` 字段，值为流中最后 chunk 的真实 prompt_tokens（或估计值兜底）
+  - message_start 的 input_tokens 仍为估算值（流式特点决定无法在首帧发送真实值）
+- **影响范围:** Anthropic 原生流式请求的 input/cache 字段现在可被正确记录；下游客户端能通过 message_delta 拿到真实 input_tokens
