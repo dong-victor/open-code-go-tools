@@ -14,3 +14,9 @@ Thumbs.db
 分析报告-数据计算准确性.html
 设计文档-流量监控页UI方案.html
 设计文档-流量监控页优化方案.html
+
+# IDE / OS artifacts
+.alma-snapshots/
+.claude/
+nul
+settings.json

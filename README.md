@@ -1,6 +1,6 @@
 # ocgt — Claude Code 原生 GUI 控制面板与代理
 
-`ocgt`（OpenCode Go Tools）是 **Claude Code** 的桌面控制面板，提供流量监控、套餐额度看板、配置管理和一键终端启动等功能。内置超低延迟本地代理（Anthropic ↔ OpenAI Chat Completions 协议互转），中英双语 GUI。
+`ocgt`（OpenCode Go Tools）是 **Claude Code** 的桌面控制面板，提供流量监控、套餐额度看板、配置管理和一键终端启动等功能。内置超低延迟本地代理（Anthropic ↔ OpenAI Chat Completions 协议互转），中英双语 GUI。当前版本 v2.0.4。
 
 > 🌐 **[English Version](docs/README.en-US.md)**
 
@@ -74,7 +74,7 @@
 %USERPROFILE%\.ocgt\config.json
 ```
 
-- **Schema 版本化**：`version` 字段 + `Migrate()` 迁移方法
+- **Schema 版本化**：`version` 字段 + `Migrate()` 迁移方法（当前 schema v1）
 - **热重载**：ModTime 检测 + 3s 轮询，外部编辑自动生效
 - **多 Profile**：`X-Ocgt-Profile` header 或默认 `active_profile`
 

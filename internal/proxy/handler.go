@@ -327,6 +327,7 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+		applyAnthropicAuth(req, profile)
 	resp, err := s.clientSnapshot().Do(req)
 	if err != nil {
 		writeProxyError(w, err)
@@ -772,6 +773,10 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 		if payload.Stream {
 			prepareStreamingUpstreamRequest(req)
 		}
+		// Apply Anthropic-style auth (X-Api-Key) for upstreams that require it
+		// (e.g., opencode.ai gateway). Without this, requests via chat/completions
+		// only carry Authorization: Bearer which these upstreams reject with 401.
+		applyAnthropicAuth(req, profile)
 
 		start := time.Now()
 		resp, err := s.clientSnapshot().Do(req)

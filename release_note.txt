@@ -1,9 +1,0 @@
-# 🇨🇳 ocgt v2.0.3 - Bug 修复版本
-
-本次更新重点修复费用估算双重计费问题，以及其他数据准确性修复。
-- 修复 EstimateCost 缓存读取双重计费（严重）
-- 修复 extractUsageFromAnthropicStream 缺 message_start 字段
-- 修复重试记录导致请求次数虚高
-- 修复模型缓存命中率误含写入
-- 修复流式 message_delta 缺 input_tokens
-- 更新 README 已知限制说明

@@ -1404,6 +1404,55 @@ func TestMessagesEndpointUsesAnthropicAuth(t *testing.T) {
 	}
 }
 
+func TestChatCompletionsEndpointUsesAnthropicAuth(t *testing.T) {
+	var sawPath, sawAPIKey, sawBearer, sawVersion string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawPath = r.URL.Path
+		sawAPIKey = r.Header.Get("X-Api-Key")
+		sawBearer = r.Header.Get("Authorization")
+		sawVersion = r.Header.Get("Anthropic-Version")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_1","model":"qwen3.7-max","choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer upstream.Close()
+
+	srv, err := New(config.Config{
+		Listen:        "127.0.0.1:0",
+		Upstream:      upstream.URL,
+		ActiveProfile: "opencode-go",
+		Profiles: map[string]config.Profile{
+			"opencode-go": {
+				APIKey:       "test-key",
+				DefaultModel: "qwen3.7-max",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"model":"qwen3.7-max","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if sawPath != "/v1/chat/completions" {
+		t.Fatalf("upstream path = %q", sawPath)
+	}
+	if sawAPIKey != "test-key" {
+		t.Fatalf("x-api-key = %q, expected test-key", sawAPIKey)
+	}
+	if sawBearer != "" {
+		t.Fatalf("authorization should be empty (replaced by X-Api-Key), got %q", sawBearer)
+	}
+	if sawVersion != "2023-06-01" {
+		t.Fatalf("anthropic-version = %q, expected 2023-06-01", sawVersion)
+	}
+}
+
 func TestToolStreamIsBridgedAsAnthropicSSE(t *testing.T) {
 	var upstreamStream bool
 	var sawAccept string

@@ -2,7 +2,7 @@
 
 > 🌐 **[简体中文版 (Chinese Version)](../README.md)**
 
-`ocgt` (OpenCode Go Tools) is a native desktop control center custom-built for **Claude Code** and the **OpenCode Go** (opencode.ai) subscription service. It integrates an ultra-low latency local compatibility proxy (converting Anthropic-format requests to OpenAI Chat Completions protocol) and provides a clean, intuitive native GUI control panel with **one-click English/Chinese switching**.
+`ocgt` (OpenCode Go Tools) is a native desktop control center custom-built for **Claude Code** and the **OpenCode Go** (opencode.ai) subscription service. It integrates an ultra-low latency local compatibility proxy (converting Anthropic-format requests to OpenAI Chat Completions protocol) and provides a clean, intuitive native GUI control panel with **one-click English/Chinese switching**. Current version v2.0.4.
 
 Developers do not need to manually configure tedious environment variables or modify system hosts in the command line. Simply double-click to open the client, and the agent environment will be automatically hosted with one-click terminal invocation.
 
@@ -34,7 +34,7 @@ Developers do not need to manually configure tedious environment variables or mo
 
 ## 🚦 Three-Step Quick Start
 
-1. **Download & Launch**: Go to [Releases](../../releases) to download the native executable for your system (e.g. `ocgt_v2.0.0.exe` for Windows) and double-click to run.
+1. **Download & Launch**: Go to [Releases](../../releases) to download the latest native executable for your system and double-click to run.
 2. **Save Settings**: In the **"Configuration"** page, fill in your **OpenCode Go API Key**, choose a default model and reasoning strength, and click **"Save & Hot-Reload"**.
 3. **Launch Terminal**: Under the **"Terminal"** tab, select your shell, click **"Launch Pre-configured Terminal"**, and type:
    ```bash
