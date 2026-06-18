@@ -848,19 +848,31 @@
 
                 <!-- ========== Sessions ========== -->
                 <section class="view" id="view-sessions">
-                    <div class="sessions-header" style="display:flex;gap:16px;margin-bottom:20px;">
-                        <div class="stat-card" style="flex:1;">
+                    <div class="dashboard-grid" id="sessions-stats">
+                        <div class="stat-card">
+                            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
                             <div class="stat-info">
                                 <span class="stat-label" data-i18n="sessions_total">本地会话</span>
                                 <h3 class="stat-value" id="sessions-count">-</h3>
                             </div>
                         </div>
-                    </div>
-                    <div class="card" style="padding:20px;">
-                        <div id="sessions-list" style="color:var(--text-2);font-size:13px;">
-                            <span data-i18n="sessions_loading">加载中...</span>
+                        <div class="stat-card">
+                            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+                            <div class="stat-info">
+                                <span class="stat-label" data-i18n="sessions_total_tokens">会话 Token 总计</span>
+                                <h3 class="stat-value mono" id="sessions-total-tokens">-</h3>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/></svg></div>
+                            <div class="stat-info">
+                                <span class="stat-label" data-i18n="sessions_total_cost">会话费用估算</span>
+                                <h3 class="stat-value mono" id="sessions-total-cost">-</h3>
+                            </div>
                         </div>
                     </div>
+
+                    <div id="sessions-list"></div>
                 </section>
 
             </div>

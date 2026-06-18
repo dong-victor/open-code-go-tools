@@ -465,6 +465,8 @@ const i18n = {
         nav_hub: "多设备同步",
         nav_sessions: "会话",
         sessions_total: "本地会话",
+        sessions_total_tokens: "会话 Token 总计",
+        sessions_total_cost: "会话费用估算",
         sessions_loading: "加载中...",
         sessions_no_data: "未找到 Claude Code 会话记录",
         title_hub: "多设备同步",
@@ -819,6 +821,8 @@ const i18n = {
         nav_hub: "Multi-Device",
         nav_sessions: "Sessions",
         sessions_total: "Local Sessions",
+        sessions_total_tokens: "Session Total Tokens",
+        sessions_total_cost: "Session Estimated Cost",
         sessions_loading: "Loading...",
         sessions_no_data: "No Claude Code session data found",
         title_hub: "Multi-Device Sync",
@@ -3785,45 +3789,107 @@ async function refreshSessions() {
     const listEl = document.getElementById('sessions-list');
     if (!listEl) return;
     try {
-        listEl.innerHTML = '<span>加载中...</span>';
+        listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-2);font-size:0.9rem;">加载中...</div>';
         const resp = await apiFetch('/ocgt/api/sessions');
         if (!resp.ok) throw new Error(await resp.text());
         const data = await resp.json();
         renderSessions(data);
     } catch (err) {
         console.error('Failed to load sessions:', err);
-        if (listEl) listEl.innerHTML = '<span style="color:var(--red);">加载失败: ' + escHtml(err.message) + '</span>';
+        if (listEl) listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--red);">加载失败: ' + escHtml(err.message) + '</div>';
     }
+}
+
+/** 简易费用估算（与 pricing 包大致对齐） */
+function sessionCost(model, inputTokens, outputTokens) {
+    const rates = {
+        'deepseek-v4-flash': { in: 0.3e-6, out: 1.1e-6 },
+        'deepseek-v4-pro': { in: 1.2e-6, out: 4e-6 },
+        'claude-sonnet': { in: 3e-6, out: 15e-6 },
+        'claude-opus': { in: 15e-6, out: 75e-6 },
+        'claude-haiku': { in: 0.8e-6, out: 4e-6 },
+        'kimi': { in: 3e-6, out: 15e-6 },
+        'qwen': { in: 3e-6, out: 15e-6 },
+    };
+    const key = Object.keys(rates).find(k => (model || '').toLowerCase().includes(k)) || 'claude-sonnet';
+    const r = rates[key];
+    return inputTokens * r.in + outputTokens * r.out;
 }
 
 function renderSessions(data) {
     const sessions = data.sessions || [];
     const countEl = document.getElementById('sessions-count');
+    const totalTokEl = document.getElementById('sessions-total-tokens');
+    const totalCostEl = document.getElementById('sessions-total-cost');
     const listEl = document.getElementById('sessions-list');
     if (!listEl) return;
 
-    if (countEl) countEl.textContent = sessions.length + ' 个会话';
-
     if (sessions.length === 0) {
-        listEl.innerHTML = '<span>' + (t('sessions_no_data') || '未找到 Claude Code 会话记录') + '</span>';
+        if (countEl) countEl.textContent = '0';
+        if (totalTokEl) totalTokEl.textContent = '-';
+        if (totalCostEl) totalCostEl.textContent = '-';
+        listEl.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-2);">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;opacity:0.3;margin-bottom:12px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
+            '<div>' + (t('sessions_no_data') || '未找到 Claude Code 会话记录') + '</div>' +
+            '<div style="font-size:0.8rem;margin-top:6px;opacity:0.6;">使用 Claude Code 后会自动产生会话记录</div>' +
+            '</div>';
         return;
     }
+
+    // 汇总统计
+    let totalTokens = 0, totalCost = 0, totalMsgs = 0;
+    for (const s of sessions) {
+        totalTokens += s.totalTokens || 0;
+        totalMsgs += s.messageCount || 0;
+        totalCost += sessionCost(s.model, s.inputTokens, s.outputTokens);
+    }
+    if (countEl) countEl.textContent = sessions.length + ' 个';
+    if (totalTokEl) totalTokEl.textContent = formatTokens(totalTokens);
+    if (totalCostEl) totalCostEl.textContent = '$' + totalCost.toFixed(2);
+
+    // 按 token 量给会话着色：小(绿) 中(黄) 大(红)
+    const maxTokens = sessions.reduce((m, s) => Math.max(m, s.totalTokens || 0), 1);
 
     listEl.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px;">' +
         sessions.map(s => {
             const sid = s.sessionId || '';
-            const shortId = sid.length > 8 ? sid.slice(0, 8) + '...' : sid;
-            const from = s.startTime ? s.startTime.slice(0, 19).replace('T', ' ') : '?';
-            const to = s.lastTime ? s.lastTime.slice(0, 19).replace('T', ' ') : '?';
-            const tokens = formatTokens ? formatTokens(s.totalTokens) : s.totalTokens;
-            return '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);">' +
+            const shortId = sid.length > 12 ? sid.slice(0, 12) + '…' : sid;
+            const from = s.startTime ? s.startTime.slice(0, 16).replace('T', ' ') : '?';
+            const to = s.lastTime ? s.lastTime.slice(0, 16).replace('T', ' ') : '?';
+
+            // 时长计算（小时/分钟）
+            let durStr = '';
+            if (s.startTime && s.lastTime) {
+                const t1 = new Date(s.startTime).getTime();
+                const t2 = new Date(s.lastTime).getTime();
+                if (t1 && t2 && t2 > t1) {
+                    const min = Math.round((t2 - t1) / 60000);
+                    durStr = min >= 60 ? (Math.floor(min / 60) + 'h ' + (min % 60) + 'm') : min + 'm';
+                }
+            }
+
+            // Token 量指示色
+            const ratio = s.totalTokens / maxTokens;
+            const dotColor = ratio > 0.5 ? 'var(--red)' : ratio > 0.15 ? 'var(--yellow)' : 'var(--green)';
+            const cost = sessionCost(s.model, s.inputTokens, s.outputTokens);
+
+            return '<div style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);transition:border-color 0.2s,box-shadow 0.2s;" onmouseover="this.style.borderColor=\'var(--border-hover)\';this.style.boxShadow=\'var(--shadow)\'" onmouseout="this.style.borderColor=\'\';this.style.boxShadow=\'\'">' +
+                '<span style="width:10px;height:10px;border-radius:50%;background:' + dotColor + ';flex-shrink:0;opacity:0.8;" title="' + (ratio > 0.5 ? '大会话' : ratio > 0.15 ? '中会话' : '小程序') + '"></span>' +
                 '<div style="flex:1;min-width:0;">' +
-                '<div style="font-weight:600;color:var(--text-0);font-size:0.9rem;font-family:var(--mono);">' + escHtml(shortId) + '</div>' +
-                '<div style="font-size:0.8rem;color:var(--text-2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(s.model || '?') + ' · ' + s.messageCount + ' 条消息</div>' +
+                '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+                '<span style="font-weight:600;color:var(--text-0);font-size:0.9rem;font-family:var(--mono);cursor:default;" title="' + escHtml(sid) + '">' + escHtml(shortId) + '</span>' +
+                '<span style="font-size:0.75rem;padding:1px 8px;border-radius:10px;background:var(--accent-soft);color:var(--accent-text);font-weight:500;">' + escHtml(s.model || '?') + '</span>' +
                 '</div>' +
-                '<div style="text-align:right;flex-shrink:0;">' +
-                '<div style="font-family:var(--mono);color:var(--text-0);font-size:0.9rem;">' + tokens + '</div>' +
-                '<div style="font-size:0.75rem;color:var(--text-2);margin-top:1px;">' + from + ' → ' + to + '</div>' +
+                '<div style="display:flex;align-items:center;gap:16px;margin-top:6px;font-size:0.8rem;color:var(--text-2);flex-wrap:wrap;">' +
+                '<span>💬 ' + s.messageCount + ' 条</span>' +
+                '<span>📊 ' + formatTokens(s.totalTokens) + '</span>' +
+                '<span>💰 $' + cost.toFixed(2) + '</span>' +
+                (durStr ? '<span>⏱ ' + durStr + '</span>' : '') +
+                '</div>' +
+                '</div>' +
+                '<div style="text-align:right;flex-shrink:0;font-size:0.75rem;color:var(--text-2);line-height:1.4;">' +
+                '<div>' + from + '</div>' +
+                '<div>' + to + '</div>' +
                 '</div>' +
                 '</div>';
         }).join('') + '</div>';
