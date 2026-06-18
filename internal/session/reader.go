@@ -311,12 +311,12 @@ func extractContent(raw json.RawMessage, eventType string) (text string, tools [
 		}
 	}
 	text = strings.Join(texts, "\n")
-		// 用户消息合成提示词过滤
-		if eventType == "user" && isSyntheticPrompt(text) {
-			return "", nil
-		}
+	// 用户消息合成提示词过滤
+	if eventType == "user" && isSyntheticPrompt(text) {
+	return "", nil
+	}
 	return
-}
+	}
 
 // isSyntheticPrompt 判断是否为 Claude Code 注入的合成提示词
 func isSyntheticPrompt(text string) bool {

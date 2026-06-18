@@ -3964,13 +3964,18 @@ function setupSessionsControls() {
         });
     }
 
-    // 内容显示切换
+    // 内容显示切换 — 实时更新详情弹窗
     const contentToggle = document.getElementById('sessions-content-toggle');
     if (contentToggle) {
         const saved = localStorage.getItem('sessions_show_content');
         if (saved === 'true') contentToggle.checked = true;
         contentToggle.addEventListener('change', () => {
             localStorage.setItem('sessions_show_content', contentToggle.checked);
+            // 详情弹窗打开时实时重渲染
+            const content = document.getElementById('session-detail-content');
+            if (content?._detailData && content.style.display !== 'none') {
+                renderSessionDetail(content._detailData, content);
+            }
         });
     }
 
@@ -4251,27 +4256,37 @@ function renderSessionDetail(data, container) {
     }
     if (currentEx) exchanges.push(currentEx);
 
+    // 过滤掉无 turn 的空 exchange
+    const valid = exchanges.filter(ex => ex.turns.length > 0);
+
     // 2. 排序
     const sortBtn = document.getElementById('sd-sort-btn');
     const sortBy = sortBtn?.dataset?.sort || 'time';
     if (sortBy === 'tokens') {
-        exchanges.sort((a, b) => (b.tokens || 0) - (a.tokens || 0) || a.time.localeCompare(b.time));
+        valid.sort((a, b) => (b.tokens || 0) - (a.tokens || 0) || a.time.localeCompare(b.time));
     } else {
-        exchanges.sort((a, b) => b.time.localeCompare(a.time) || (b.tokens || 0) - (a.tokens || 0));
+        valid.sort((a, b) => b.time.localeCompare(a.time) || (b.tokens || 0) - (a.tokens || 0));
     }
 
     // 3. 渲染
-    if (exchanges.length === 0) {
+    if (valid.length === 0) {
         container.innerHTML = '<div class="sd-empty">无事件数据</div>';
         return;
     }
 
-    const maxTokens = exchanges.reduce((m, e) => Math.max(m, e.tokens || 0), 1);
+    const maxTokens = valid.reduce((m, e) => Math.max(m, e.tokens || 0), 1);
     let html = '<div class="session-detail-exchanges">';
-    for (const ex of exchanges) {
-        const preview = ex.text ? '：' + escHtml(ex.text.slice(0, 100)) : '';
-        const toolNames = [...new Set(ex.turns.flatMap(t => t.tools))];
-        const toolStr = toolNames.length ? ' · ⊧ ' + toolNames.join(' ') : '';
+    for (const ex of valid) {
+        let preview = '';
+        if (ex.text) {
+            // 图片提示特殊标记
+            if (/\[Image #?\d*\]/i.test(ex.text)) {
+                preview = ' 🖼️ ' + escHtml(ex.text.replace(/\[Image #?\d*\]/gi, '').trim().slice(0, 80));
+                if (!preview.trim()) preview = ' 🖼️ [图片]';
+            } else {
+                preview = '：' + escHtml(ex.text.slice(0, 200));
+            }
+        }
         const pct = ((ex.tokens || 0) / maxTokens * 100).toFixed(1);
 
         html += '<div class="sd-exchange">' +
