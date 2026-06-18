@@ -179,6 +179,7 @@ export class HubDO {
 
     // 所有设备参与汇总（不过滤离线设备）
     const result = aggregateDevices(devices);
+    result.updatedAt = new Date().toISOString();
     // 附加上下文
     result.devices = devices.map(d => ({
       deviceId: d.deviceId,
@@ -189,6 +190,9 @@ export class HubDO {
       updatedAt: d.updatedAt,
       receivedAt: d.receivedAt,
       stale: this.staleAfterMs > 0 && (now - new Date(d.receivedAt || d.updatedAt).getTime()) > this.staleAfterMs,
+      today: d.today || null,
+      month: d.month || null,
+      allTime: d.allTime || null,
     }));
 
     return result;

@@ -423,11 +423,10 @@ func cmdHub(args []string) error {
 		return err
 	}
 
-	log.Printf("[hub] 独立 Hub 监听于 %s", srv.Addr())
-
 	if err := srv.Start(); err != nil {
 		return err
 	}
+	log.Printf("[hub] 独立 Hub 监听于 %s", srv.Addr())
 
 	// Wait for interrupt signal
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
