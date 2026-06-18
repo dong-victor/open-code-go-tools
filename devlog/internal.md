@@ -315,6 +315,19 @@
 - **原因:** storePath 字面含义是文件路径，实际存储的是目录，命名误导
 - **影响范围:** 仅字段重命名，无功能变化
 
+## 2026-06-18 19:00: [session] 后端：日志解析 + API 路由
+- **文件:**
+  - `internal/session/types.go` — 新建会话类型定义
+  - `internal/session/reader.go` — JSONL 扫描解析 + 去重逻辑
+  - `internal/session/session_test.go` — 单元测试 + testdata
+  - `internal/proxy/handler.go` — 新增 `/ocgt/api/sessions` 路由和 handler
+- **原因:** 需要从 Claude Code 本地会话日志 `~/.claude/projects/<hash>/<sessionId>.jsonl` 提取 token 用量数据，通过 API 提供给前端
+- **决策:**
+  - UUID 去重 + Message ID 去重（参考 Token Monitor 的 parseClaudeTranscript）
+  - 只处理 `type == "assistant"` 且带 `message.usage` 的事件
+  - 按 lastTime 倒序排列
+- **影响范围:** 新增 `internal/session` 包；`internal/proxy` 新增对 `internal/session` 的依赖
+
 ## 2026-06-18 14:30: main.go cmdHub Addr/Start 调用顺序修复
 - **文件:** `main.go`
 - **原因:** Addr() 在 Start() 之前调用，返回 nil listener

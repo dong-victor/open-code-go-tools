@@ -25,6 +25,7 @@ import (
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/quota"
+	"github.com/ethan-blue/open-code-go-tools/internal/session"
 	"github.com/ethan-blue/open-code-go-tools/internal/version"
 )
 
@@ -66,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/ocgt/api/config/raw", s.apiRawConfig)
 	mux.HandleFunc("/ocgt/api/quota", s.apiQuota)
 	mux.HandleFunc("/ocgt/api/quota/refresh", s.apiRefreshQuota)
+	mux.HandleFunc("/ocgt/api/sessions", s.apiSessions)
 	s.registerStatsRoutes(mux)
 
 	mux.HandleFunc("/", s.serveStatic)
@@ -1637,6 +1639,34 @@ func (s *Server) apiRefreshQuota(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, quota.QuotaResult{
 		Success: true,
 		Data:    data,
+	})
+}
+
+func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
+		return
+	}
+
+	projectsRoot, err := session.ClaudeProjectsRoot()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	sessions, err := session.ReadAllSessions(projectsRoot)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	if sessions == nil {
+		sessions = []session.SessionStats{}
+	}
+
+	writeJSON(w, http.StatusOK, session.SessionsResponse{
+		Sessions: sessions,
+		Total:    len(sessions),
 	})
 }
 

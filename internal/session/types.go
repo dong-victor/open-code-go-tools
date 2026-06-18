@@ -1,0 +1,43 @@
+package session
+
+// ClaudeCodeEvent 映射 Claude Code JSONL 单行事件
+type ClaudeCodeEvent struct {
+	Type      string          `json:"type"`
+	UUID      string          `json:"uuid"`
+	SessionID string          `json:"sessionId"`
+	Timestamp string          `json:"timestamp"`
+	Message   *claudeMessage  `json:"message,omitempty"`
+}
+
+type claudeMessage struct {
+	ID    string       `json:"id"`
+	Model string       `json:"model"`
+	Usage *claudeUsage `json:"usage,omitempty"`
+}
+
+type claudeUsage struct {
+	InputTokens       int `json:"input_tokens"`
+	OutputTokens      int `json:"output_tokens"`
+	CacheReadTokens   int `json:"cache_read_input_tokens"`
+	CacheCreateTokens int `json:"cache_creation_input_tokens"`
+}
+
+// SessionStats 单次会话的聚合统计
+type SessionStats struct {
+	SessionID         string `json:"sessionId"`
+	Model             string `json:"model"`
+	MessageCount      int    `json:"messageCount"`
+	InputTokens       int64  `json:"inputTokens"`
+	OutputTokens      int64  `json:"outputTokens"`
+	CacheReadTokens   int64  `json:"cacheReadTokens"`
+	CacheCreateTokens int64  `json:"cacheCreateTokens"`
+	TotalTokens       int64  `json:"totalTokens"`
+	StartTime         string `json:"startTime"`
+	LastTime          string `json:"lastTime"`
+}
+
+// SessionsResponse API 响应
+type SessionsResponse struct {
+	Sessions []SessionStats `json:"sessions"`
+	Total    int            `json:"total"`
+}
