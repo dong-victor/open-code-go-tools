@@ -241,3 +241,14 @@
 - **根因:** v2.0.4 的 applyAnthropicAuth 无条件删除 Authorization: Bearer 并替换为 X-Api-Key，导致 opencode.ai/zen/go 等 Bearer 认证上游返回 401
 - **决策:** git reset --hard upstream/main 同步到 v2.0.5，保留 .gitignore 等独有文件，重新打包
 - **影响范围:** auth_mode 默认 bearer 保留兼容性；使用 X-Api-Key 上游的用户需在 Profile 中设置 auth_mode: x-api-key
+
+## 2026-06-18 11:00: [hub] Preferences 增加 Hub 配置字段
+- **文件:**
+  - `internal/preferences/preferences.go`
+- **原因:** 实现 Hub 跨设备同步功能需要配置存储支持
+- **决策:**
+  - 新增 HubEnabled/HubURL/HubSecret/HubDeviceName/HubPushIntervalSec 五个字段
+  - HubSecret 使用 `json:"-"` 避免明文写入 JSON 文件
+  - 默认推送间隔 120 秒，启用同步时校验范围 30-1800 秒
+  - 无侵入增量修改，所有现有代码保持不变
+- **影响范围:** `internal/preferences` 包

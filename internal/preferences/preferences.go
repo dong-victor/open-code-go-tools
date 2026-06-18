@@ -17,6 +17,8 @@ const (
 	DefaultAccentHue        = 174
 	DefaultLastView         = "dashboard"
 	DefaultCompactShell     = "powershell"
+	DefaultHubEnabled       = false
+	DefaultHubPushInterval  = 120
 )
 
 type Preferences struct {
@@ -30,6 +32,11 @@ type Preferences struct {
 	LastView             string   `json:"last_view"`
 	CompactShell         string   `json:"compact_shell"`
 	ExpandedIntegrations []string `json:"expanded_integrations,omitempty"`
+	HubEnabled           bool     `json:"hub_enabled"`
+	HubURL               string   `json:"hub_url,omitempty"`
+	HubSecret            string   `json:"-"`
+	HubDeviceName        string   `json:"hub_device_name,omitempty"`
+	HubPushIntervalSec   int      `json:"hub_push_interval_sec"`
 }
 
 func DefaultPath() (string, error) {
@@ -133,6 +140,9 @@ func (p *Preferences) applyDefaults() {
 	if strings.TrimSpace(p.CompactShell) == "" {
 		p.CompactShell = DefaultCompactShell
 	}
+	if p.HubPushIntervalSec == 0 {
+		p.HubPushIntervalSec = DefaultHubPushInterval
+	}
 }
 
 func (p Preferences) Validate() error {
@@ -159,6 +169,9 @@ func (p Preferences) Validate() error {
 	}
 	if !IsValidCompactShell(p.CompactShell) {
 		return fmt.Errorf("invalid compact_shell %q", p.CompactShell)
+	}
+	if p.HubEnabled && (p.HubPushIntervalSec < 30 || p.HubPushIntervalSec > 1800) {
+		return fmt.Errorf("hub_push_interval_sec must be between 30 and 1800 when hub is enabled, got %d", p.HubPushIntervalSec)
 	}
 	seen := map[string]bool{}
 	for _, item := range p.ExpandedIntegrations {
@@ -202,7 +215,7 @@ func IsValidLanguage(value string) bool {
 
 func IsValidView(value string) bool {
 	switch value {
-	case "dashboard", "settings", "terminal", "history":
+	case "dashboard", "settings", "terminal", "history", "traffic-detail", "hub":
 		return true
 	default:
 		return false
