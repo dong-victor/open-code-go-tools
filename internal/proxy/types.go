@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
+	"github.com/ethan-blue/open-code-go-tools/internal/hub"
 	"github.com/ethan-blue/open-code-go-tools/internal/quota"
 )
 
@@ -77,10 +78,18 @@ type Server struct {
 	// Quota monitoring — cached quota data from OpenCode Go RPC.
 	quotaData  *quota.QuotaData
 	quotaMu    sync.RWMutex
+
+	// 跨设备同步计数器，由外部设置
+	HubCounters *hub.SyncCounters
 }
 
 func (s *Server) SetConfigPath(path string) {
 	s.configPath = path
+}
+
+// SetHubCounters 注入跨设备同步计数器。
+func (s *Server) SetHubCounters(c *hub.SyncCounters) {
+	s.HubCounters = c
 }
 
 type anthropicRequest struct {

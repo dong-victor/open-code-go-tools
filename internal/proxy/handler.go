@@ -1211,6 +1211,14 @@ func (s *Server) addHistoryEntryWithUsageAndError(method, path string, status in
 		s.history = s.history[:100]
 	}
 	s.historyMu.Unlock()
+
+	// 累加跨设备同步计数器
+	if s.HubCounters != nil {
+		s.HubCounters.Accumulate(entry.Model, entry.Route, usage.Client,
+			int64(usage.InputTokens), int64(usage.OutputTokens),
+			int64(usage.CacheReadTokens), int64(usage.CacheCreationTokens))
+	}
+
 	s.persistHistoryEntry(entry)
 }
 

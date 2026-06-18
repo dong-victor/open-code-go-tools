@@ -266,7 +266,13 @@
   - 原子写入快照防止崩溃损坏
 - **影响范围:** `internal/hub` 新包
 
-## 2026-06-18 12:39: Hub 跨设备同步客户端实现
+## 2026-06-18 18:07: [hub] SyncCounters 注入请求处理流程
+- **文件:**
+  - `internal/proxy/types.go` — Server 增加 HubCounters 字段 + SetHubCounters 方法 + hub import
+  - `internal/proxy/handler.go` — addHistoryEntryWithUsageAndError 中调用 HubCounters.Accumulate
+- **原因:** 实现 Hub 跨设备同步功能，需要将每个 API 调用的 token 用量注入同步计数器中
+- **决策:** 在 addHistoryEntryWithUsageAndError 的函数末尾（persistHistoryEntry 之前）插入 Accumulate 调用，确保每次历史记录写入 JSONL 的同时也累加到 Hub 计数器；使用 SetHubCounters 方法保持 Server 初始化方式不变；字段类型转换 int→int64 以匹配 Accumulate 签名
+- **影响范围:** `internal/proxy` 包新增对 `internal/hub` 的依赖；所有代理请求的处理都将同步累加 Hub 计数器
 - **文件:**
   - `internal/hub/client.go` — 新建客户端，实现推送、SSE 监听、设备 ID 管理
 - **原因:** 需要向 Hub 服务器推送本地统计并接收远程设备统计
