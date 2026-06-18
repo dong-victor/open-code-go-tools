@@ -3794,6 +3794,7 @@ function renderHubStats(stats) {
 function renderHubModelChart(stats) {
     const canvas = document.getElementById('hub-model-chart');
     if (!canvas) return;
+    if (typeof Chart === 'undefined') return;
 
     // Aggregate byModel across all devices
     const modelTotals = {};
@@ -4027,6 +4028,10 @@ function renderSessionsChart() {
     const canvas = document.getElementById('sessions-model-chart');
     if (!canvas) return;
     const container = document.getElementById('sessions-chart-container');
+    if (typeof Chart === 'undefined') {
+        container.style.display = 'none';
+        return;
+    }
 
     const modelCounts = {};
     let totalSessions = 0;

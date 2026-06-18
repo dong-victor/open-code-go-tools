@@ -215,6 +215,7 @@ function lineOpts(extra, maxTicks) {
 function renderTokenTrend(daily, granularity) {
   const canvas = document.getElementById('chart-token-trend');
   if (!canvas) return;
+  if (typeof Chart === 'undefined') return;
   if (chartInstances.tokenTrend) chartInstances.tokenTrend.destroy();
   if (!daily || daily.length === 0) {
     canvas.parentElement.innerHTML = '<div class="td-empty">暂无数据</div>'; return;
@@ -244,6 +245,7 @@ function renderTokenTrend(daily, granularity) {
 function renderRequestTrend(daily, granularity) {
   const canvas = document.getElementById('chart-request-trend');
   if (!canvas) return;
+  if (typeof Chart === 'undefined') return;
   if (chartInstances.requestTrend) chartInstances.requestTrend.destroy();
   if (!daily || daily.length === 0) {
     canvas.parentElement.innerHTML = '<div class="td-empty">暂无数据</div>'; return;
@@ -261,6 +263,7 @@ function renderRequestTrend(daily, granularity) {
 function renderModelDonut(models) {
   const canvas = document.getElementById('chart-model-donut');
   if (!canvas) return;
+  if (typeof Chart === 'undefined') return;
   if (chartInstances.modelDonut) chartInstances.modelDonut.destroy();
   if (!models || models.length === 0) {
     canvas.parentElement.innerHTML = '<div class="td-empty">暂无数据</div>'; return;

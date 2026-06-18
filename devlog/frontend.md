@@ -19,6 +19,15 @@
 
   **2026-06-18 后续修复：** sessionCost 补全模型费率 + 缓存费用计算；删除残留的 test-hub-connection-btn 死代码；hy 匹配键改为 hy3 避免误匹配
 
+## 2026-06-18 22:30: Chart.js CDN → 本地化 + 图表保护检查
+- **文件:**
+  - `frontend/lib/chart.umd.min.js` — 新增 Chart.js 本地文件（196KB，离线可用）
+  - `frontend/index.html` — CDN 引用改为本地 `lib/chart.umd.min.js`；移除未使用的 datalabels 插件
+  - `frontend/app.js` — renderSessionsChart/renderHubModelChart 增加 `typeof Chart === 'undefined'` 保护
+  - `frontend/traffic.js` — renderTokenTrend/renderRequestTrend/renderModelDonut 增加 Chart 保护检查
+- **原因:** cdn.jsdelivr.net 在国内不可靠，导致所有 Chart.js 图表不显示；会话图表因缺少保护检查直接抛"Chart is not defined"
+- **影响范围:** 流量雷达图表、Hub 模型分布图、会话模型分布图全部恢复
+
 ## 2026-06-02 11:20: 新增 OpenCode Go 套餐额度监控 — 前端
 
 ## 2026-06-02 12:10: 版本号更新 — frontend
