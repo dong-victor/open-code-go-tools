@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
+	"github.com/ethan-blue/open-code-go-tools/internal/hub"
 	"github.com/ethan-blue/open-code-go-tools/internal/proxy"
 	"github.com/ethan-blue/open-code-go-tools/internal/version"
 	"github.com/wailsapp/wails/v2"
@@ -126,6 +127,13 @@ func runCLI(args []string) error {
 
 		return cmdClaudeDesktopEnv(args[1:])
 
+	case "hub":
+		if err := cmdHub(args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+
+	return nil
 	case "key":
 		return cmdKey(args[1:])
 	case "version":
@@ -388,6 +396,53 @@ func cmdKey(args []string) error {
 	}
 }
 
+func cmdHub(args []string) error {
+	fs := flag.NewFlagSet("hub", flag.ExitOnError)
+	port := fs.Int("port", hub.DefaultHubPort, "listen port")
+	host := fs.String("host", "0.0.0.0", "listen host")
+	secret := fs.String("secret", "", "auth secret (required for non-loopback)")
+	dataDir := fs.String("data", "", "data directory (default ~/.ocgt)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	var resolvedDataDir string
+	if *dataDir != "" {
+		resolvedDataDir = *dataDir
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("cannot determine home dir: %w", err)
+		}
+		resolvedDataDir = filepath.Join(home, ".ocgt")
+	}
+
+	opt := hub.ServerOption{
+		Port:    *port,
+		Host:    *host,
+		Secret:  *secret,
+		DataDir: resolvedDataDir,
+	}
+	srv, err := hub.NewHubServer(opt)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("[hub] 独立 Hub 监听于 %s", srv.Addr())
+
+	if err := srv.Start(); err != nil {
+		return err
+	}
+
+	// Wait for interrupt signal
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	<-ctx.Done()
+
+	log.Println("[hub] 正在关闭...")
+	return srv.Stop()
+}
+
 func selectedProfile(configPath, profileName string) (config.Config, config.Profile, string, error) {
 	cfg, err := loadConfig(configPath)
 	if err != nil {
@@ -537,6 +592,8 @@ Commands:
   claude-desktop-env   print/apply ~/.claude/settings.json for Claude Code Desktop
 
   ccswitch             print a CC Switch-friendly provider JSON snippet
+
+  hub                  start a standalone Hub server for cross-device sync
 
   key                  save or show OPENCODE_GO_API_KEY
   version       print version

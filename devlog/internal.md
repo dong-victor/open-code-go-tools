@@ -297,3 +297,15 @@
   - 数据持久化使用原子写入（临时文件 + rename），避免崩溃导致文件损坏
   - 统计聚合遍历所有设备，累加 today/month/allTime 三个时间段的 PeriodStats，按 receivedAt 标记 stale
 - **影响范围:** `internal/hub/server.go` 新文件
+
+## 2026-06-18 19:00: [hub] app+main 集成内嵌 Hub 与独立 Hub 命令
+- **文件:**
+  - `app.go` — startup() 中增加 Hub 初始化块（计数器、客户端、内嵌服务器）
+  - `main.go` — 新增 `hub` CLI 子命令 + cmdHub 函数
+  - `internal/proxy/types.go` — 新增 SetHubClient 方法
+- **原因:** 完成 Hub 跨设备同步的上层集成，GUI 模式和 CLI 模式均可使用
+- **决策:**
+  - app.go: startup() 中无条件创建 SyncCounters；HubEnabled 时创建并启动 HubClient（定期推送）；HubURL 为空时启动内嵌 Hub 服务器
+  - main.go: cmdHub 使用 signal.NotifyContext 实现优雅关闭
+  - hub case 使用 os.Exit(1) 错误处理 + return nil 正常退出
+- **影响范围:** GUI 启动时自动初始化 Hub 计数器；配置 Hub 后自动推送/接收同步数据；CLI 可独立运行 Hub 服务器

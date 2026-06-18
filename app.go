@@ -19,9 +19,11 @@ import (
 	"time"
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
+	"github.com/ethan-blue/open-code-go-tools/internal/hub"
 	"github.com/ethan-blue/open-code-go-tools/internal/preferences"
 	"github.com/ethan-blue/open-code-go-tools/internal/proxy"
 	"github.com/ethan-blue/open-code-go-tools/internal/quota"
+	"github.com/ethan-blue/open-code-go-tools/internal/version"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -164,6 +166,66 @@ func (a *App) startup(ctx context.Context) {
 			log.Println("[GUI proxy] preferences load error:", err)
 		}
 		srv.SetConfigPath(defaultPath)
+
+		// ── 初始化 Hub 同步 ──
+		homeDir, _ := os.UserHomeDir()
+		dataDir := filepath.Join(homeDir, ".ocgt")
+
+		// 创建同步计数器
+		counters := hub.NewSyncCounters(dataDir)
+		srv.SetHubCounters(counters)
+
+		// 读取 Hub 配置
+		hubPrefs, hubErr := preferences.Load("")
+		if hubErr == nil && hubPrefs.HubEnabled {
+			// 读取密钥（独立文件，不写入 preferences.json）
+			hubSecret := hubPrefs.HubSecret
+			if hubSecret == "" {
+				secretPath := filepath.Join(dataDir, "hub-secret")
+				if secretData, err := os.ReadFile(secretPath); err == nil {
+					hubSecret = strings.TrimSpace(string(secretData))
+				}
+			}
+
+			// 创建并启动同步客户端
+			hubClient, err := hub.NewClient(hub.Config{
+				Enabled:         hubPrefs.HubEnabled,
+				HubURL:          hubPrefs.HubURL,
+				Secret:          hubSecret,
+				DeviceName:      hubPrefs.HubDeviceName,
+				PushIntervalSec: hubPrefs.HubPushIntervalSec,
+			}, counters, version.Version, dataDir)
+			if err == nil {
+				hubClient.Start()
+				srv.SetHubClient(hubClient)
+			}
+
+			// 如果未设置 Hub URL，启动内嵌 Hub 服务器
+			if hubPrefs.HubURL == "" {
+				if hubSecret == "" {
+					secretPath := filepath.Join(dataDir, "hub-secret")
+					if secretData, err := os.ReadFile(secretPath); err == nil {
+						hubSecret = strings.TrimSpace(string(secretData))
+					}
+				}
+
+				hubSrv, err := hub.NewHubServer(hub.ServerOption{
+					Port:    hub.DefaultHubPort,
+					Host:    "0.0.0.0",
+					Secret:  hubSecret,
+					DataDir: dataDir,
+				})
+				if err == nil {
+					go func() {
+						log.Println("[hub] 内嵌 Hub 启动于", hubSrv.Addr())
+						if err := hubSrv.Start(); err != nil {
+							log.Println("[hub] 内嵌 Hub 停止:", err)
+						}
+					}()
+				}
+			}
+		}
+
 		a.srv = srv
 		if errStr := a.SyncConfiguredIntegrations(); errStr != "success" {
 			log.Println("[GUI proxy] integration resync error:", errStr)
