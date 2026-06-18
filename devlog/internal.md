@@ -265,3 +265,17 @@
   - 内置简化版价格估算（deepseek-v4-flash/pro、claude-sonnet-4-7、kimi、qwen），避免跨包循环依赖
   - 原子写入快照防止崩溃损坏
 - **影响范围:** `internal/hub` 新包
+
+## 2026-06-18 12:39: Hub 跨设备同步客户端实现
+- **文件:**
+  - `internal/hub/client.go` — 新建客户端，实现推送、SSE 监听、设备 ID 管理
+- **原因:** 需要向 Hub 服务器推送本地统计并接收远程设备统计
+- **决策:**
+  - Client 结构体封装 Config/SyncCounters/deviceID/httpClient，atomic.Value 安全存储 remoteStats
+  - NewClient 验证 PushIntervalSec [30,1800]，调用 loadOrCreateDeviceID 生成/加载设备 ID
+  - Start 创建定时器、立即推送、goroutine 定时推送、goroutine 监听 SSE
+  - Stop 使用 sync.Once 确保只执行一次停止（含退出前推送）
+  - pushOnce 调用 counters.BuildPayload 获取完整载荷，POST 到 /api/ingest，成功后持久化快照
+  - listenSSE 连接 /api/stats/stream，解析 data: 前缀 JSON 更新 remoteStats，断线 5s 重连
+  - 设备 ID 格式 ocgt-{32hex}，使用 crypto/rand 生成 16 字节随机数，存储在 {dataDir}/device-id
+- **影响范围:** `internal/hub/client.go` 新文件
