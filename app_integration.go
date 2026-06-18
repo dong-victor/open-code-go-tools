@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -646,4 +647,76 @@ func (a *App) OpenLogLocation() string {
 		return "error opening directory: " + err.Error()
 	}
 	return "success"
+}
+
+func (a *App) SaveHubConfig(enabled bool, hubURL, secret, deviceName string, pushIntervalSec int) string {
+	prefs, err := preferences.Load("")
+	if err != nil {
+		prefs = preferences.Preferences{}
+	}
+	prefs.HubEnabled = enabled
+	prefs.HubURL = hubURL
+	prefs.HubDeviceName = deviceName
+	prefs.HubPushIntervalSec = pushIntervalSec
+
+	// 持久化密钥到独立文件（避免写入 preferences.json）
+	if secret != "" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			secretPath := filepath.Join(home, ".ocgt", "hub-secret")
+			if err := os.MkdirAll(filepath.Dir(secretPath), 0700); err == nil {
+				os.WriteFile(secretPath, []byte(strings.TrimSpace(secret)), 0600)
+			}
+		}
+	}
+	prefs.HubSecret = secret // 用于本次会话
+
+	if err := prefs.Save(""); err != nil {
+		return "save error: " + err.Error()
+	}
+
+	// 通知后端重启 Hub 客户端（如果有 srv）
+	if a.srv != nil {
+		log.Println("[hub] 配置已保存，需重启应用以应用新配置")
+	}
+
+	return "success"
+}
+
+func (a *App) GetHubConfig() string {
+	prefs, err := preferences.Load("")
+	if err != nil {
+		return `{"error":"` + err.Error() + `"}`
+	}
+
+	home, _ := os.UserHomeDir()
+	secretPath := filepath.Join(home, ".ocgt", "hub-secret")
+	secretData, _ := os.ReadFile(secretPath)
+	hasSecret := len(strings.TrimSpace(string(secretData))) > 0
+
+	data, _ := json.Marshal(map[string]any{
+		"enabled":         prefs.HubEnabled,
+		"hubUrl":          prefs.HubURL,
+		"deviceName":      prefs.HubDeviceName,
+		"pushIntervalSec": prefs.HubPushIntervalSec,
+		"hasSecret":       hasSecret,
+	})
+	return string(data)
+}
+
+func (a *App) GetHubStatus() string {
+	status := map[string]any{
+		"connected": false,
+		"deviceId":  "",
+		"remoteStats": nil,
+	}
+
+	if a.srv != nil && a.srv.HubClient != nil {
+		status["connected"] = true
+		status["deviceId"] = a.srv.HubClient.DeviceID()
+		status["remoteStats"] = a.srv.HubClient.RemoteStats()
+	}
+
+	data, _ := json.Marshal(status)
+	return string(data)
 }

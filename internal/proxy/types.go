@@ -79,6 +79,9 @@ type Server struct {
 	quotaData  *quota.QuotaData
 	quotaMu    sync.RWMutex
 
+	// Hub client for cross-device sync.
+	HubClient *hub.Client
+
 	// 跨设备同步计数器，由外部设置
 	HubCounters *hub.SyncCounters
 }
@@ -90,6 +93,11 @@ func (s *Server) SetConfigPath(path string) {
 // SetHubCounters 注入跨设备同步计数器。
 func (s *Server) SetHubCounters(c *hub.SyncCounters) {
 	s.HubCounters = c
+}
+
+// SetHubClient 注入跨设备同步客户端。
+func (s *Server) SetHubClient(c *hub.Client) {
+	s.HubClient = c
 }
 
 type anthropicRequest struct {

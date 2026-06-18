@@ -273,18 +273,18 @@
 - **原因:** 实现 Hub 跨设备同步功能，需要将每个 API 调用的 token 用量注入同步计数器中
 - **决策:** 在 addHistoryEntryWithUsageAndError 的函数末尾（persistHistoryEntry 之前）插入 Accumulate 调用，确保每次历史记录写入 JSONL 的同时也累加到 Hub 计数器；使用 SetHubCounters 方法保持 Server 初始化方式不变；字段类型转换 int→int64 以匹配 Accumulate 签名
 - **影响范围:** `internal/proxy` 包新增对 `internal/hub` 的依赖；所有代理请求的处理都将同步累加 Hub 计数器
+
+## 2026-06-18 18:30: [hub] Wails 绑定 Hub 配置操作
 - **文件:**
-  - `internal/hub/client.go` — 新建客户端，实现推送、SSE 监听、设备 ID 管理
-- **原因:** 需要向 Hub 服务器推送本地统计并接收远程设备统计
+  - `app_integration.go` — 新增 SaveHubConfig/GetHubConfig/GetHubStatus 三个 Wails 绑定方法
+  - `internal/proxy/types.go` — Server 增加 HubClient 可导出字段
+- **原因:** Wails 前端需要调用 Hub 配置的保存、读取和状态查询功能
 - **决策:**
-  - Client 结构体封装 Config/SyncCounters/deviceID/httpClient，atomic.Value 安全存储 remoteStats
-  - NewClient 验证 PushIntervalSec [30,1800]，调用 loadOrCreateDeviceID 生成/加载设备 ID
-  - Start 创建定时器、立即推送、goroutine 定时推送、goroutine 监听 SSE
-  - Stop 使用 sync.Once 确保只执行一次停止（含退出前推送）
-  - pushOnce 调用 counters.BuildPayload 获取完整载荷，POST 到 /api/ingest，成功后持久化快照
-  - listenSSE 连接 /api/stats/stream，解析 data: 前缀 JSON 更新 remoteStats，断线 5s 重连
-  - 设备 ID 格式 ocgt-{32hex}，使用 crypto/rand 生成 16 字节随机数，存储在 {dataDir}/device-id
-- **影响范围:** `internal/hub/client.go` 新文件
+  - SaveHubConfig 保存到 preferences 的同时将密钥独立存储到 ~/.ocgt/hub-secret（权限 0600），避免密钥明文写入 preferences.json
+  - GetHubConfig 返回除密钥本身外的全部配置，用 hasSecret 布尔值标记密钥是否存在
+  - GetHubStatus 通过 a.srv.HubClient 获取实时连接状态和设备信息
+  - 参照 SaveLogPreferences 的模式，三个方法均返回 JSON 字符串以保持与 Wails 前端的兼容
+- **影响范围:** `app_integration.go` 新增 3 个 Wails 绑定方法；`internal/proxy/types.go` 新增 HubClient 字段
 
 ## 2026-06-18 18:20: [hub] Hub HTTP 服务器实现
 - **文件:** `internal/hub/server.go`
