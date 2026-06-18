@@ -285,3 +285,15 @@
   - listenSSE 连接 /api/stats/stream，解析 data: 前缀 JSON 更新 remoteStats，断线 5s 重连
   - 设备 ID 格式 ocgt-{32hex}，使用 crypto/rand 生成 16 字节随机数，存储在 {dataDir}/device-id
 - **影响范围:** `internal/hub/client.go` 新文件
+
+## 2026-06-18 18:20: [hub] Hub HTTP 服务器实现
+- **文件:** `internal/hub/server.go`
+- **原因:** 实现 Hub 跨设备同步功能的服务端，接收多设备推送并提供聚合统计和实时 SSE 推送
+- **决策:**
+  - Server 结构体使用 map[io.Writer]struct{} 追踪 SSE 客户端，使用 map[io.Writer]chan struct{} 实现广播通知
+  - 认证使用 Authorization: Bearer 或 X-OCGT-Secret header；secret 为空时只绑定 127.0.0.1 确保安全
+  - SS-server 使用 Go 1.22+ ServeMux 方法路由（GET/POST/DELETE + 路径参数）
+  - SSE 客户端连接后立即发送当前快照，每 30 秒心跳，ingest/delete 时广播更新
+  - 数据持久化使用原子写入（临时文件 + rename），避免崩溃导致文件损坏
+  - 统计聚合遍历所有设备，累加 today/month/allTime 三个时间段的 PeriodStats，按 receivedAt 标记 stale
+- **影响范围:** `internal/hub/server.go` 新文件
