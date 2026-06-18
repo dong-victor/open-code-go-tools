@@ -16,6 +16,8 @@
   - 会话页引入搜索/筛选/排序/模型分布图/详情展开弹窗，参考 Token Monitor 的 exchange/turn 分组
   - 全面用 SVG 图标替代 emoji，用 CSS 类替代内联样式
 - **影响范围:** frontend/ 下三个文件
+
+  **2026-06-18 后续修复：** sessionCost 补充 glm/hy/mimo/minimax 费率和缓存费用计算，修正缺失模型误按 Sonnet 计价和忽略缓存费用的问题
   - `frontend/src/wailsjs/go/main/App.d.ts` — TypeScript 类型
   - `frontend/src/wailsjs/go/main/App.js` — JS 绑定
 - **原因:** 参考 `@yinxe/opencode-tui-usage`，在 ocgt GUI 显示 Rolling/Weekly/Monthly 额度

@@ -3930,7 +3930,7 @@ function applySessionsFilters() {
             case 'time-asc': return (a.startTime || '').localeCompare(b.startTime || '');
             case 'tokens-desc': return (b.totalTokens || 0) - (a.totalTokens || 0);
             case 'tokens-asc': return (a.totalTokens || 0) - (b.totalTokens || 0);
-            case 'cost-desc': return sessionCost(b.model, b.inputTokens, b.outputTokens) - sessionCost(a.model, a.inputTokens, a.outputTokens);
+            case 'cost-desc': return sessionCost(b.model, b.inputTokens, b.outputTokens, b.cacheReadTokens, b.cacheCreateTokens) - sessionCost(a.model, a.inputTokens, a.outputTokens, a.cacheReadTokens, a.cacheCreateTokens);
             default: return (b.lastTime || '').localeCompare(a.lastTime || '');
         }
     });
@@ -3944,7 +3944,7 @@ function renderSessionsStats(sessions) {
     for (const s of sessions) {
         totalTokens += s.totalTokens || 0;
         totalMsgs += s.messageCount || 0;
-        totalCost += sessionCost(s.model, s.inputTokens, s.outputTokens);
+        totalCost += sessionCost(s.model, s.inputTokens, s.outputTokens, s.cacheReadTokens, s.cacheCreateTokens);
     }
     const countEl = document.getElementById('sessions-count');
     const totalTokEl = document.getElementById('sessions-total-tokens');
@@ -3987,7 +3987,7 @@ function renderSessionsList(sessions) {
 
             const ratio = (s.totalTokens || 0) / maxTokens;
             const dotColor = ratio > 0.5 ? 'var(--red)' : ratio > 0.15 ? 'var(--yellow)' : 'var(--green)';
-            const cost = sessionCost(s.model, s.inputTokens, s.outputTokens);
+            const cost = sessionCost(s.model, s.inputTokens, s.outputTokens, s.cacheReadTokens, s.cacheCreateTokens);
             const modelShort = (s.model || '?').replace(/^claude-/i, '');
 
             return '<div class="session-card" data-session-id="' + escHtml(s.sessionId) + '">' +
@@ -4069,20 +4069,29 @@ function renderSessionsChart() {
     });
 }
 
-/** 简易费用估算（与 pricing 包大致对齐） */
-function sessionCost(model, inputTokens, outputTokens) {
+/** 费用估算（含模型匹配 + 缓存费用估算） */
+function sessionCost(model, inputTokens, outputTokens, cacheReadTokens, cacheCreateTokens) {
+    // 费率表：每 token 价格（USD）
+    // cacheRead 统一按 input 的 10% 估算，cacheCreate 按 input 的 125% 估算（Claude API 标准）
+    // 其他模型暂不支持缓存计费，设为 0
     const rates = {
-        'deepseek-v4-flash': { in: 0.3e-6, out: 1.1e-6 },
-        'deepseek-v4-pro': { in: 1.2e-6, out: 4e-6 },
-        'claude-sonnet': { in: 3e-6, out: 15e-6 },
-        'claude-opus': { in: 15e-6, out: 75e-6 },
-        'claude-haiku': { in: 0.8e-6, out: 4e-6 },
-        'kimi': { in: 3e-6, out: 15e-6 },
-        'qwen': { in: 3e-6, out: 15e-6 },
+        'deepseek-v4-flash': { in: 0.3e-6, out: 1.1e-6, cr: 0, cc: 0 },
+        'deepseek-v4-pro':   { in: 1.2e-6, out: 4e-6,   cr: 0, cc: 0 },
+        'claude-sonnet':     { in: 3e-6,   out: 15e-6,  cr: 0.3e-6,  cc: 3.75e-6 },
+        'claude-opus':       { in: 15e-6,  out: 75e-6,  cr: 1.5e-6,  cc: 18.75e-6 },
+        'claude-haiku':      { in: 0.8e-6, out: 4e-6,   cr: 0.08e-6, cc: 1.0e-6 },
+        'kimi':              { in: 3e-6,   out: 15e-6,  cr: 0, cc: 0 },
+        'qwen':              { in: 3e-6,   out: 15e-6,  cr: 0, cc: 0 },
+        'glm':               { in: 0.5e-6, out: 1.5e-6, cr: 0, cc: 0 },
+        'hy':                 { in: 0.5e-6, out: 1.5e-6, cr: 0, cc: 0 },
+        'mimo':              { in: 1e-6,   out: 2e-6,   cr: 0, cc: 0 },
+        'minimax':           { in: 0.8e-6, out: 2e-6,   cr: 0, cc: 0 },
     };
     const key = Object.keys(rates).find(k => (model || '').toLowerCase().includes(k)) || 'claude-sonnet';
     const r = rates[key];
-    return inputTokens * r.in + outputTokens * r.out;
+    const cr = cacheReadTokens || 0;
+    const cc = cacheCreateTokens || 0;
+    return inputTokens * r.in + outputTokens * r.out + cr * r.cr + cc * r.cc;
 }
 
 /** 打开会话详情弹窗 */
