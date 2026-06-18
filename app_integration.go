@@ -706,8 +706,8 @@ func (a *App) GetHubConfig() string {
 
 func (a *App) GetHubStatus() string {
 	status := map[string]any{
-		"connected": false,
-		"deviceId":  "",
+		"connected":   false,
+		"deviceId":    "",
 		"remoteStats": nil,
 	}
 

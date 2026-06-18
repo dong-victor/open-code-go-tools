@@ -24,15 +24,15 @@ type SyncPayload struct {
 
 // PeriodStats 单个时间段的聚合统计数据
 type PeriodStats struct {
-	TotalTokens       int64                `json:"totalTokens"`
-	EstimatedCost     float64              `json:"estimatedCost"`
-	InputTokens       int64                `json:"inputTokens"`
-	OutputTokens      int64                `json:"outputTokens"`
-	CacheReadTokens   int64                `json:"cacheReadTokens"`
-	CacheCreateTokens int64                `json:"cacheCreateTokens"`
-	ByModel           map[string]DimStats  `json:"byModel,omitempty"`
-	ByRoute           map[string]DimStats  `json:"byRoute,omitempty"`
-	ByClient          map[string]DimStats  `json:"byClient,omitempty"`
+	TotalTokens       int64               `json:"totalTokens"`
+	EstimatedCost     float64             `json:"estimatedCost"`
+	InputTokens       int64               `json:"inputTokens"`
+	OutputTokens      int64               `json:"outputTokens"`
+	CacheReadTokens   int64               `json:"cacheReadTokens"`
+	CacheCreateTokens int64               `json:"cacheCreateTokens"`
+	ByModel           map[string]DimStats `json:"byModel,omitempty"`
+	ByRoute           map[string]DimStats `json:"byRoute,omitempty"`
+	ByClient          map[string]DimStats `json:"byClient,omitempty"`
 }
 
 // DimStats 按某个维度（model/route/client）拆分的统计数据

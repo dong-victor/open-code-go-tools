@@ -76,8 +76,8 @@ type Server struct {
 	wg sync.WaitGroup
 
 	// Quota monitoring — cached quota data from OpenCode Go RPC.
-	quotaData  *quota.QuotaData
-	quotaMu    sync.RWMutex
+	quotaData *quota.QuotaData
+	quotaMu   sync.RWMutex
 
 	// Hub client for cross-device sync.
 	HubClient *hub.Client
@@ -127,17 +127,17 @@ type anthropicTool struct {
 }
 
 type openAIRequest struct {
-	Model       string          `json:"model"`
-	Messages    []openAIMessage `json:"messages"`
-	Stream      bool            `json:"stream,omitempty"`
+	Model         string          `json:"model"`
+	Messages      []openAIMessage `json:"messages"`
+	Stream        bool            `json:"stream,omitempty"`
 	StreamOptions map[string]bool `json:"stream_options,omitempty"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Temperature *float64        `json:"temperature,omitempty"`
-	TopP        *float64        `json:"top_p,omitempty"`
-	Stop        []string        `json:"stop,omitempty"`
-	Tools       []openAITool    `json:"tools,omitempty"`
-	ToolChoice  any             `json:"tool_choice,omitempty"`
-	Thinking    any             `json:"thinking,omitempty"`
+	MaxTokens     int             `json:"max_tokens,omitempty"`
+	Temperature   *float64        `json:"temperature,omitempty"`
+	TopP          *float64        `json:"top_p,omitempty"`
+	Stop          []string        `json:"stop,omitempty"`
+	Tools         []openAITool    `json:"tools,omitempty"`
+	ToolChoice    any             `json:"tool_choice,omitempty"`
+	Thinking      any             `json:"thinking,omitempty"`
 	// DeepSeek-compatible thinking effort. Only set for models that advertise this parameter.
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }

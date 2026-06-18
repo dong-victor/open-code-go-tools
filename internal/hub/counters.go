@@ -66,9 +66,9 @@ const (
 type SyncCounters struct {
 	mu sync.RWMutex
 
-	today     PeriodStats
-	month     PeriodStats
-	allTime   PeriodStats
+	today   PeriodStats
+	month   PeriodStats
+	allTime PeriodStats
 
 	todayDate string // "2006-01-02"，记录 today 所属日期
 	monthKey  string // "2006-01"，记录 month 所属月份

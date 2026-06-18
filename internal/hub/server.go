@@ -76,7 +76,7 @@ func NewHubServer(opt ServerOption) (*Server, error) {
 	s := &Server{
 		secret:       opt.Secret,
 		staleAfterMs: opt.StaleAfterMs,
-		dataDir:    opt.DataDir,
+		dataDir:      opt.DataDir,
 		host:         host,
 		port:         opt.Port,
 		sseClients:   make(map[io.Writer]struct{}),

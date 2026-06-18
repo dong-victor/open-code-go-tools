@@ -62,7 +62,6 @@ var appIconPng []byte
 //go:embed build/windows/icon.ico
 var appIconIco []byte
 
-
 func (a *App) showMainWindow(center bool) {
 	if a.ctx == nil {
 		return
@@ -187,44 +186,44 @@ func (a *App) startup(ctx context.Context) {
 				}
 			}
 
-				// 无远程 Hub URL 时启动内嵌 Hub 服务器
-				if hubPrefs.HubURL == "" {
-					if hubSecret == "" {
-						secretPath := filepath.Join(dataDir, "hub-secret")
-						if secretData, err := os.ReadFile(secretPath); err == nil {
-							hubSecret = strings.TrimSpace(string(secretData))
-						}
-					}
-
-					hubSrv, err := hub.NewHubServer(hub.ServerOption{
-						Port:    hub.DefaultHubPort,
-						Host:    "0.0.0.0",
-						Secret:  hubSecret,
-						DataDir: dataDir,
-					})
-					if err == nil {
-						go func() {
-							if err := hubSrv.Start(); err != nil {
-								log.Println("[hub] 内嵌 Hub 停止:", err)
-								return
-							}
-							log.Println("[hub] 内嵌 Hub 启动于", hubSrv.Addr())
-						}()
-					}
-				} else {
-					// 有远程 Hub URL，创建并启动同步客户端
-					hubClient, err := hub.NewClient(hub.Config{
-						Enabled:         hubPrefs.HubEnabled,
-						HubURL:          hubPrefs.HubURL,
-						Secret:          hubSecret,
-						DeviceName:      hubPrefs.HubDeviceName,
-						PushIntervalSec: hubPrefs.HubPushIntervalSec,
-					}, counters, version.Version, dataDir)
-					if err == nil {
-						hubClient.Start()
-						srv.SetHubClient(hubClient)
+			// 无远程 Hub URL 时启动内嵌 Hub 服务器
+			if hubPrefs.HubURL == "" {
+				if hubSecret == "" {
+					secretPath := filepath.Join(dataDir, "hub-secret")
+					if secretData, err := os.ReadFile(secretPath); err == nil {
+						hubSecret = strings.TrimSpace(string(secretData))
 					}
 				}
+
+				hubSrv, err := hub.NewHubServer(hub.ServerOption{
+					Port:    hub.DefaultHubPort,
+					Host:    "0.0.0.0",
+					Secret:  hubSecret,
+					DataDir: dataDir,
+				})
+				if err == nil {
+					go func() {
+						if err := hubSrv.Start(); err != nil {
+							log.Println("[hub] 内嵌 Hub 停止:", err)
+							return
+						}
+						log.Println("[hub] 内嵌 Hub 启动于", hubSrv.Addr())
+					}()
+				}
+			} else {
+				// 有远程 Hub URL，创建并启动同步客户端
+				hubClient, err := hub.NewClient(hub.Config{
+					Enabled:         hubPrefs.HubEnabled,
+					HubURL:          hubPrefs.HubURL,
+					Secret:          hubSecret,
+					DeviceName:      hubPrefs.HubDeviceName,
+					PushIntervalSec: hubPrefs.HubPushIntervalSec,
+				}, counters, version.Version, dataDir)
+				if err == nil {
+					hubClient.Start()
+					srv.SetHubClient(hubClient)
+				}
+			}
 		}
 
 		a.srv = srv
