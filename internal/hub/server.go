@@ -246,20 +246,13 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleDevices returns the list of all known devices.
+// handleDevices returns the list of all known devices with flat stats fields.
 func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
-	s.storeMu.Lock()
-	devices := make([]DeviceRecord, 0, len(s.store.Devices))
-	for _, d := range s.store.Devices {
-		devices = append(devices, d)
+	resp := s.buildStatsResponse()
+	if resp.Devices == nil {
+		resp.Devices = []deviceStat{}
 	}
-	s.storeMu.Unlock()
-
-	sort.Slice(devices, func(i, j int) bool {
-		return devices[i].ReceivedAt > devices[j].ReceivedAt
-	})
-
-	writeJSON(w, http.StatusOK, devices)
+	writeJSON(w, http.StatusOK, resp.Devices)
 }
 
 // handleDeleteDevice removes a device by its ID.
