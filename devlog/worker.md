@@ -1,0 +1,16 @@
+## 2026-06-18 12:20: Hub Worker 创建 — Cloudflare Worker 跨设备同步
+- **文件:**
+  - `worker/package.json` — 项目配置
+  - `worker/wrangler.toml` — Worker 配置与 Durable Object 绑定
+  - `worker/src/index.js` — 完整 Worker + HubDO 实现
+- **原因:** 实现 OCGT Hub 跨设备同步功能的服务端组件
+- **决策:** 参考 Token Monitor Worker 架构，适配 OCGT 数据模型（PeriodStats 三段式：today/month/allTime，无 sessions/clients 嵌套）。直接覆盖式合并（客户端推送完整快照），而不是增量合并。SSE 通过 HubDO 广播给所有已连接客户端。
+- **影响范围:** 新增 `worker/` 目录，不影响现有代码
+- **API 端点:**
+  - `GET /api/health` — 健康检查（无认证）
+  - `POST /api/ingest` — 接收设备推送
+  - `GET /api/stats` — 聚合统计
+  - `GET /api/stats/stream` — SSE 实时流
+  - `GET /api/devices` — 设备列表
+  - `DELETE /api/devices/:id` — 删除设备
+- **踩坑:** 认证头同时支持 `Authorization: Bearer <secret>` 和 `X-OCGT-Secret` 两种方式

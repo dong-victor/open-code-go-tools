@@ -20,3 +20,6 @@ Thumbs.db
 .claude/
 nul
 settings.json
+
+# Node.js
+node_modules/
