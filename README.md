@@ -134,13 +134,20 @@ wails build        # 生产构建
 
 ---
 
-## ⚠️ 已知限制
-
-代理转发时，用量统计可能存在偏差：
-
-1. **缓存统计依赖上游**：DeepSeek/Qwen 等靠 `prompt_tokens_details.cached_tokens` 返回缓存数据，部分上游不返回就没法统计
-2. **费用是估算值**：按官方定价表计算，跟实际账单可能有出入，仅供参考
-
+## ⚠️ 已知限制
+
+
+
+代理转发时，用量统计可能存在偏差：
+
+
+
+1. **缓存统计依赖上游**：DeepSeek/Qwen 等靠 `prompt_tokens_details.cached_tokens` 返回缓存数据，部分上游不返回就没法统计
+
+2. **费用是估算值**：按官方定价表计算，跟实际账单可能有出入，仅供参考
+
+
+
 这是架构限制，不是 Bug。
 
 ---
@@ -151,4 +158,4 @@ MIT License
 
 ## 邀请链接
 
-可以走此链接订购 go 计划：https://opencode.ai/go?ref=RRWQDE4CWW
+可以走此链接订购 go 计划：https://opencode.ai/go?ref=75Q34GPBZ1
