@@ -313,3 +313,9 @@
 - **根因:** 流量图表在 API 返回空数据时用 `canvas.parentElement.innerHTML = '暂无数据'` 覆盖父元素，导致 canvas DOM 节点被销毁，后续轮询再也找不到 canvas 节点，图表永久不显示
 - **决策:** 改为 `toggleChartEmpty()` 辅助函数，通过叠加 `.td-empty-state` 遮罩而非销毁 canvas；canvas 隐藏但保留在 DOM 中，数据恢复时取消隐藏即可正常渲染
 - **影响范围:** 流量仪表盘 3 个图表函数（renderTokenTrend/renderRequestTrend/renderModelDonut）和会话列表
+
+## 2026-06-23 16:00: v2.2.2 版本升级
+- **文件:**
+  - `frontend/app.js` — insertAdjacentHTML 替代 innerHTML += 避免重复解析
+  - `internal/version/version.go` — v2.2.0 → v2.2.2
+- **影响范围:** 版本号更新至 v2.2.2
