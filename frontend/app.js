@@ -4108,7 +4108,7 @@ function renderSessionsList(sessions) {
     if (hasMore) {
         const remaining = sessions.length - sessionsDisplayCount;
         const loadMore = Math.min(SESSION_PAGE_SIZE, remaining);
-        listEl.innerHTML += '<div class="s-load-more" onclick="loadMoreSessions()">显示更多 ' + loadMore + ' 条（剩余 ' + remaining + '）</div>';
+        listEl.insertAdjacentHTML('beforeend', '<div class="s-load-more" onclick="loadMoreSessions()">显示更多 ' + loadMore + ' 条（剩余 ' + remaining + '）</div>');
     }
 
     // 点击行 → 详情
