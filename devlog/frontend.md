@@ -318,4 +318,5 @@
 - **文件:**
   - `frontend/app.js` — insertAdjacentHTML 替代 innerHTML += 避免重复解析
   - `internal/version/version.go` — v2.2.0 → v2.2.2
+  - `wails.json` — productVersion 2.1.0 → 2.2.2
 - **影响范围:** 版本号更新至 v2.2.2
