@@ -1,3 +1,9 @@
+## 2026-06-25: 发布 v2.2.4 — 修复正则解析 JSON 格式失败
+- **文件:** `internal/quota/quota.go`, `internal/version/version.go`, `wails.json`
+- **版本:** 2.2.3 → 2.2.4
+- **根因:** 正则 `usagePercent\s*[:=]` 未处理 JSON 中 `usagePercent":12` 的引号
+- **修复:** `usagePercent"?\s*[:=]` — 加 `"?` 可选匹配引号，兼容 JSON 和 JS 两种格式
+
 ## 2026-06-25: 发布 v2.2.3
 - **文件:** `internal/version/version.go`, `wails.json`
 - **版本:** 2.2.2 → 2.2.3
