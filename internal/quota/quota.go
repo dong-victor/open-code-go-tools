@@ -5,20 +5,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
-const (
-	openCodeGoBaseURL   = "https://opencode.ai"
-	openCodeGoServiceID = "c7389bd0e731f80f49593e5ee53835475f4e28594dd6bd83eb229bab753498cd"
-)
+const openCodeGoBaseURL = "https://opencode.ai"
 
 // QuotaUsage represents quota usage for a single time dimension.
-// Mirrors the opencode-tui-usage QuotaUsage type.
 type QuotaUsage struct {
 	Status       string `json:"status"`        // "active" or "unlimited"
 	UsagePercent int    `json:"usage_percent"`  // 0–100
@@ -42,14 +38,21 @@ type QuotaResult struct {
 	Error        string     `json:"error,omitempty"`
 }
 
-// FetchOpenCodeGoQuota calls the opencode.ai internal RPC endpoint to retrieve
-// current quota usage (rolling / weekly / monthly). It mirrors the logic in
-// @yinxe/opencode-tui-usage OpenCodeGoQuotaProvider.fetchQuota().
-//
-// Caller must provide the browser cookie and workspace ID:
-//
-//	OPENCODE_GO_AUTH_COOKIE  — full cookie string from opencode.ai
-//	OPENCODE_GO_WORKSPACE_ID — wrk_xxxxxxxxxxxx
+// pageGoUsage mirrors the JSON shape embedded in the /workspace/{id}/go page.
+type pageGoUsage struct {
+	Rolling *windowData `json:"rollingUsage"`
+	Weekly  *windowData `json:"weeklyUsage"`
+	Monthly *windowData `json:"monthlyUsage"`
+}
+type windowData struct {
+	Status       *string  `json:"status"`
+	UsagePercent *float64 `json:"usagePercent"`
+	UsedPercent  *float64 `json:"usedPercent"`
+	ResetInSec   *float64 `json:"resetInSec"`
+}
+
+// FetchOpenCodeGoQuota retrieves current Go plan quota from the
+// /workspace/{id}/go page. Tries JSON first, falls back to regex.
 func FetchOpenCodeGoQuota(cookie, workspaceID string) (*QuotaData, error) {
 	if cookie == "" {
 		return nil, fmt.Errorf("OpenCode Go auth cookie not configured (see quota_cookie in profile config)")
@@ -58,18 +61,14 @@ func FetchOpenCodeGoQuota(cookie, workspaceID string) (*QuotaData, error) {
 		return nil, fmt.Errorf("OpenCode Go workspace ID not configured (see quota_workspace_id in profile config)")
 	}
 
-	args := buildRPCArgs(workspaceID)
-	reqURL := fmt.Sprintf("%s/_server?id=%s&args=%s",
-		openCodeGoBaseURL, openCodeGoServiceID, url.QueryEscape(args))
-
-	req, err := http.NewRequest("GET", reqURL, nil)
+	pageURL := fmt.Sprintf("%s/workspace/%s/go", openCodeGoBaseURL, workspaceID)
+	req, err := http.NewRequest("GET", pageURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("accept", "*/*")
 	req.Header.Set("cookie", cookie)
-	req.Header.Set("x-server-id", openCodeGoServiceID)
-	req.Header.Set("x-server-instance", "server-fn:3")
+	req.Header.Set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
@@ -80,80 +79,49 @@ func FetchOpenCodeGoQuota(cookie, workspaceID string) (*QuotaData, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("quota API returned %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("quota page returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	return parseQuotaResponse(string(body))
+	return parseGoUsage(string(body))
 }
 
 // CredentialsFromEnv reads OpenCode Go credentials from environment variables.
-// This mirrors the fallback logic in opencode-tui-usage's OpenCodeGoQuotaProvider.init().
 func CredentialsFromEnv() (cookie, workspaceID string) {
 	cookie = os.Getenv("OPENCODE_GO_AUTH_COOKIE")
 	workspaceID = os.Getenv("OPENCODE_GO_WORKSPACE_ID")
 	return
 }
 
-// buildRPCArgs builds the JSON-encoded RPC args string.
-// Equivalent to the JS literal in opencode-tui-usage:
-//
-//	{t:{t:9,i:0,l:1,a:[{t:1,s:workspaceId}],o:0},f:31,m:[]}
-func buildRPCArgs(workspaceID string) string {
-	raw := map[string]any{
-		"t": map[string]any{
-			"t": 9,
-			"i": 0,
-			"l": 1,
-			"a": []any{
-				map[string]any{"t": 1, "s": workspaceID},
-			},
-			"o": 0,
-		},
-		"f": 31,
-		"m": []any{},
+// parseGoUsage tries JSON first, then falls back to regex.
+func parseGoUsage(text string) (*QuotaData, error) {
+	data, err := parseGoUsageJSON(text)
+	if err == nil && data != nil {
+		return data, nil
 	}
-	data, _ := json.Marshal(raw)
-	return string(data)
+	return parseGoUsageRegex(text)
 }
 
-// parseQuotaResponse extracts quota data from the RPC response text.
-// The upstream returns a Go-encoding-like format:
-//
-//	rollingUsage:$R[1]={status:"active",resetInSec:3600,usagePercent:45}
-//	weeklyUsage:$R[2]={status:"active",resetInSec:604800,usagePercent:30}
-//	monthlyUsage:$R[3]={status:"unlimited",resetInSec:0,usagePercent:0}
-func parseQuotaResponse(text string) (*QuotaData, error) {
-	rollingMatch := regexp.MustCompile(
-		`rollingUsage:\$R\[1\]=\{status:"([^"]+)",resetInSec:(\d+),usagePercent:(\d+)\}`,
-	).FindStringSubmatch(text)
-
-	weeklyMatch := regexp.MustCompile(
-		`weeklyUsage:\$R\[2\]=\{status:"([^"]+)",resetInSec:(\d+),usagePercent:(\d+)\}`,
-	).FindStringSubmatch(text)
-
-	monthlyMatch := regexp.MustCompile(
-		`monthlyUsage:\$R\[3\]=\{status:"([^"]+)",resetInSec:(\d+),usagePercent:(\d+)\}`,
-	).FindStringSubmatch(text)
-
-	if rollingMatch == nil {
-		return nil, fmt.Errorf("failed to parse rollingUsage from response")
+// parseGoUsageJSON attempts to unmarshal the page body as JSON.
+func parseGoUsageJSON(text string) (*QuotaData, error) {
+	var page pageGoUsage
+	if err := json.Unmarshal([]byte(text), &page); err != nil {
+		return nil, err
 	}
-	if weeklyMatch == nil {
-		return nil, fmt.Errorf("failed to parse weeklyUsage from response")
+	if page.Rolling == nil || page.Weekly == nil {
+		return nil, fmt.Errorf("incomplete JSON: missing rolling or weekly data")
 	}
-
-	rolling := parseUsage(rollingMatch)
-	weekly := parseUsage(weeklyMatch)
-
+	rolling := buildUsage(
+		toStatus(page.Rolling), toPct(page.Rolling), toSec(page.Rolling))
+	weekly := buildUsage(
+		toStatus(page.Weekly), toPct(page.Weekly), toSec(page.Weekly))
 	var monthly *QuotaUsage
-	if monthlyMatch != nil {
-		m := parseUsage(monthlyMatch)
+	if page.Monthly != nil {
+		m := buildUsage(toStatus(page.Monthly), toPct(page.Monthly), toSec(page.Monthly))
 		if m.Status != "unlimited" {
 			monthly = &m
 		}
 	}
-
 	return &QuotaData{
 		Rolling:   rolling,
 		Weekly:    weekly,
@@ -162,24 +130,105 @@ func parseQuotaResponse(text string) (*QuotaData, error) {
 	}, nil
 }
 
-func parseUsage(matches []string) QuotaUsage {
-	reset, _ := strconv.Atoi(matches[2])
-	percent, _ := strconv.Atoi(matches[3])
+// parseGoUsageRegex extracts window data from text/javascript responses (fallback).
+// Each window key + its fields is matched in a single regex for accuracy.
+func parseGoUsageRegex(text string) (*QuotaData, error) {
+	type windowMatch struct {
+		pct     int
+		resetMs int
+	}
+	extract := func(key string) (windowMatch, bool) {
+		pctRe := regexp.MustCompile(key + `[^}]*?usagePercent\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)`)
+		pm := pctRe.FindStringSubmatch(text)
+		if pm == nil {
+			return windowMatch{}, false
+		}
+		resetRe := regexp.MustCompile(key + `[^}]*?resetInSec\s*[:=]\s*([0-9]+)`)
+		rm := resetRe.FindStringSubmatch(text)
+		resetSec := 0
+		if rm != nil {
+			resetSec, _ = strconv.Atoi(rm[1])
+		}
+		return windowMatch{
+			pct:     clampPct(int(parseFloat(pm[1]))),
+			resetMs: resetSec,
+		}, true
+	}
+
+	rolling, rok := extract("rollingUsage")
+	weekly, wok := extract("weeklyUsage")
+	if !rok || !wok {
+		return nil, fmt.Errorf("failed to parse usagePercent from page response")
+	}
+
+	result := &QuotaData{
+		Rolling:   buildUsage("", rolling.pct, rolling.resetMs),
+		Weekly:    buildUsage("", weekly.pct, weekly.resetMs),
+		FetchedAt: time.Now(),
+	}
+	if monthly, mok := extract("monthlyUsage"); mok {
+		m := buildUsage("", monthly.pct, monthly.resetMs)
+		if m.Status != "unlimited" {
+			result.Monthly = &m
+		}
+	}
+	return result, nil
+}
+
+// --- helpers ----------------------------------------------------------------
+
+func toStatus(w *windowData) string {
+	if w.Status != nil {
+		return *w.Status
+	}
+	return ""
+}
+
+func toPct(w *windowData) int {
+	if w.UsagePercent != nil {
+		return clampPct(int(*w.UsagePercent))
+	}
+	if w.UsedPercent != nil {
+		return clampPct(int(*w.UsedPercent))
+	}
+	return 0
+}
+
+func toSec(w *windowData) int {
+	if w.ResetInSec != nil {
+		return int(*w.ResetInSec)
+	}
+	return 0
+}
+
+func buildUsage(status string, pct, resetSec int) QuotaUsage {
+	if status == "" {
+		status = "active"
+	}
 	return QuotaUsage{
-		Status:       matches[1],
-		UsagePercent: percent,
-		ResetInSec:   reset,
-		ResetDisplay: formatDurationCompact(reset),
+		Status:       status,
+		UsagePercent: pct,
+		ResetInSec:   resetSec,
+		ResetDisplay: formatDurationCompact(resetSec),
 	}
 }
 
+func parseFloat(s string) float64 {
+	v, _ := strconv.ParseFloat(s, 64)
+	return v
+}
+
+func clampPct(pct int) int {
+	if pct < 0 {
+		return 0
+	}
+	if pct > 100 {
+		return 100
+	}
+	return pct
+}
+
 // formatDurationCompact formats a duration in seconds as a compact human-readable string.
-// Mirrors formatters.ts formatDurationCompact() from opencode-tui-usage.
-//
-//	45  → "45s"
-//	90  → "2m"
-//	3600  → "1h"
-//	86400 → "1d"
 func formatDurationCompact(seconds int) string {
 	if seconds < 60 {
 		return fmt.Sprintf("%ds", seconds)

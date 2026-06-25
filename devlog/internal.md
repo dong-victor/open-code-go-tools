@@ -1,3 +1,9 @@
+## 2026-06-25: 修复套餐额度接口因 opencode.ai 服务端函数哈希过期失效
+- **文件:** `internal/quota/quota.go`
+- **根因:** 同 ocgt-monitor 问题 — TanStack RPC 服务端函数 ID（`c7389bd0e...`）过期，`_server` 接口返回 302/500
+- **决策:** 将数据来源从 `_server?id=<哈希>` RPC 调用改为直接抓取 `/workspace/{id}/go` 页面，与 ocgt-monitor 已修复的方式一致
+- **影响范围:** 仅 `quota.go` 的 `FetchOpenCodeGoQuota`，调用方（`app.go`、`handler.go`）无感
+
 ## 2026-06-19 19:30: 新增 FetchUpstreamModels — 后端代理上游模型列表
 - **文件:**
   - `internal/proxy/handler.go` — 新增 `func (s *Server) FetchUpstreamModels(ctx) (map[string]any, error)`，复用 `newUpstreamRequest + applyAnthropicAuth + clientSnapshot + normalizeModels` 全链路
