@@ -16,6 +16,17 @@
 - **决策:** 将数据来源从 `_server?id=<哈希>` RPC 调用改为直接抓取 `/workspace/{id}/go` 页面，与 ocgt-monitor 已修复的方式一致
 - **影响范围:** 仅 `quota.go` 的 `FetchOpenCodeGoQuota`，调用方（`app.go`、`handler.go`）无感
 
+## 2026-06-25: 重写额度模块 — 自动解析 Workspace + 改进页面抓取
+- **文件:** `internal/quota/quota.go`
+- **根因:** 上轮改用页面爬取后，`/workspace/{id}/go` 页面格式再次变化导致正则解析失败（用户反馈"解析失败"）
+- **决策:**
+  - 新增 workspace ID 自动解析（`resolveWorkspaceID` 通过 `_server` RPC 自动获取），用户不再需要手动配置 `quota_workspace_id`
+  - 页面请求头改进：Accept 从 `*/*` 改为 `text/html,application/xhtml+xml,...`，与 token-monitor 一致——这是修复解析失败的关键
+  - cookie 输入清洗（`sanitizeCookie`）：自动补全 `auth=` 前缀、去除多余空白和 "cookie:" 前缀
+  - 降级移除未使用的 subscription RPC 代码（Go 套餐的 workspace 无 subscription 数据）
+- **影响范围:** 仅 `quota.go`，对外接口 `FetchOpenCodeGoQuota(cookie, workspaceID)` 签名不变
+- **实测:** cookie 仅即可获取完整额度数据（Rolling/Weekly/Monthly）
+
 ## 2026-06-19 19:30: 新增 FetchUpstreamModels — 后端代理上游模型列表
 - **文件:**
   - `internal/proxy/handler.go` — 新增 `func (s *Server) FetchUpstreamModels(ctx) (map[string]any, error)`，复用 `newUpstreamRequest + applyAnthropicAuth + clientSnapshot + normalizeModels` 全链路
