@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -92,7 +93,24 @@ func parseVirtualKey(s string) (uint32, error) {
 	return 0, fmt.Errorf("invalid hotkey key: %q", s)
 }
 
+// MSG structure for PeekMessage/GetMessage
+type winMsg struct {
+	Hwnd    uintptr
+	Message uint32
+	_       uintptr
+	_       uintptr
+	_       uint32
+	_       uint32
+	_       uint32
+}
+
 func windowsHotkeyLoop(mod, vk uint32, callback func(), stop chan struct{}) {
+	// CRITICAL: RegisterHotKey(NULL,...) posts WM_HOTKEY to the calling thread's
+	// message queue. LockOSThread ensures the registration and message pump stay
+	// on the same OS thread — Go goroutines normally migrate between threads.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	user32 := syscall.NewLazyDLL("user32.dll")
 	registerHotKey := user32.NewProc("RegisterHotKey")
 	peekMessage := user32.NewProc("PeekMessageW")
@@ -106,36 +124,31 @@ func windowsHotkeyLoop(mod, vk uint32, callback func(), stop chan struct{}) {
 		log.Printf("[hotkey] RegisterHotKey failed for mod=0x%x vk=0x%x", mod, vk)
 		return
 	}
+	log.Printf("[hotkey] registered: mod=0x%x vk=0x%x", mod, vk)
 
 	defer func() {
 		unregisterHotKey.Call(0, id)
+		log.Printf("[hotkey] unregistered")
 	}()
 
-	var msg struct {
-		Hwnd    uintptr
-		Message uint32
-		_       uintptr
-		_       uintptr
-		_       uint32
-		_       uint32
-		_       uint32
-	}
-
 	for {
+		// Check stop signal
 		select {
 		case <-stop:
 			return
 		default:
-			ret, _, _ := peekMessage.Call(
-				uintptr(unsafe.Pointer(&msg)),
-				0, 0, 0,
-				pmRemove,
-			)
-			if ret != 0 && msg.Message == 0x0312 { // WM_HOTKEY
-				callback()
-			}
-			time.Sleep(100 * time.Millisecond)
 		}
+
+		var msg winMsg
+		got, _, _ := peekMessage.Call(
+			uintptr(unsafe.Pointer(&msg)),
+			0, 0, 0,
+			pmRemove,
+		)
+		if got != 0 && msg.Message == 0x0312 { // WM_HOTKEY
+			callback()
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 

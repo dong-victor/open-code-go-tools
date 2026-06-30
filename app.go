@@ -122,6 +122,16 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	go a.actionLoop()
 
+	// Check silent-start preference BEFORE the window is shown by Wails.
+	// WindowHide at this point prevents the initial flash.
+	prefs, err := preferences.Load("")
+	if err == nil && prefs.SilentStart {
+		wailsruntime.WindowHide(ctx)
+		a.windowVisible.Store(false)
+	} else {
+		a.windowVisible.Store(true)
+	}
+
 	// Start Go proxy server in the background!
 	go func() {
 		emitError := func(msg string) {
@@ -262,9 +272,7 @@ func (a *App) domReady(ctx context.Context) {
 		prefs = preferences.Preferences{}
 	}
 
-	if prefs.SilentStart {
-		a.hideMainWindow()
-	} else {
+	if !prefs.SilentStart {
 		a.showMainWindow(true)
 	}
 
