@@ -265,7 +265,7 @@ func cmdClaudeEnv(args []string) error {
 	fs := flag.NewFlagSet("claude-env", flag.ExitOnError)
 	configPath := fs.String("config", "", "config path")
 	profileName := fs.String("profile", "", "profile name")
-	baseURL := fs.String("base-url", "http://127.0.0.1:8787", "local proxy base URL")
+	baseURL := fs.String("base-url", "http://127.0.0.1:9191", "local proxy base URL")
 	shell := fs.String("shell", "powershell", "powershell, bash, or cmd")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -288,7 +288,7 @@ func cmdClaudeDesktopEnv(args []string) error {
 	fs := flag.NewFlagSet("claude-desktop-env", flag.ExitOnError)
 	configPath := fs.String("config", "", "config path")
 	profileName := fs.String("profile", "", "profile name")
-	baseURL := fs.String("base-url", "http://127.0.0.1:8787", "local proxy base URL")
+	baseURL := fs.String("base-url", "http://127.0.0.1:9191", "local proxy base URL")
 	apply := fs.Bool("apply", false, "write directly to ~/.claude/settings.json instead of printing")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -348,7 +348,7 @@ func cmdCCSwitch(args []string) error {
 	fs := flag.NewFlagSet("ccswitch", flag.ExitOnError)
 	configPath := fs.String("config", "", "config path")
 	profileName := fs.String("profile", "", "profile name")
-	baseURL := fs.String("base-url", "http://127.0.0.1:8787", "local proxy base URL")
+	baseURL := fs.String("base-url", "http://127.0.0.1:9191", "local proxy base URL")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -580,7 +580,7 @@ func printEnv(env map[string]string, shell string) {
 
 func usage() {
 	fmt.Print(`ocgt - official Claude API proxy for Claude Code and CC Switch
-	
+
 Commands:
   gui           run the graphical control panel (default when double-clicked)
   init          create ~/.ocgt/config.json

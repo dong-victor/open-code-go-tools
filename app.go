@@ -321,7 +321,7 @@ func (a *App) GetListenAddress() string {
 	if err == nil && cfg.Listen != "" {
 		return cfg.Listen
 	}
-	return "127.0.0.1:8787" // default fallback
+	return "127.0.0.1:9191" // default fallback
 }
 
 func (a *App) localProxyAuthToken() string {

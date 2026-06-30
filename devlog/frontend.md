@@ -124,7 +124,7 @@
   - `frontend/index.html` — 新增快速连接页面(CLI一键配置+临时终端)、导航标签改为"快速连接"、请求历史增加导出标签
   - `frontend/style.css` — 配额进度条改用多巴胺渐变色、新增 `--quota-bar-bg` 变量修复浅色模式黑色背景
 - **原因:**
-  - 流量雷达无数据根因：traffic.js 使用 `window.location.origin`(Wails 前端服务器)而非代理端口(8787)，API 调用全部失败
+  - 流量雷达无数据根因：traffic.js 使用 `window.location.origin`(Wails 前端服务器)而非代理端口(9191)，API 调用全部失败
   - 快速连接页面缺失：v2.0.2 重构时遗漏了 `#view-terminal` HTML 结构，JS/CSS 代码已存在
   - 额度卡片不够多巴胺：配色为 GitHub 风格非多巴胺色板，进度条在浅色模式为黑色
   - 请求历史缺少明确的导出引导
@@ -134,7 +134,7 @@
 - **文件:**
   - `frontend/traffic.js` — 移除 `apiGet` 中的 `TRAFFIC_API_BASE +` 前缀（调用方已通过 `getBaseURL()` 构造完整 URL），同时移除请求历史相关全部函数(200+行)
   - `frontend/index.html` — 移除“请求历史”整个 section
-- **根因(流量无数据):** `apiGet` 中写死 `TRAFFIC_API_BASE + path`，但所有调用方已拼接 `getBaseURL() + path`，导致 URL 双倍叠加(如 `http://127.0.0.1:8787http://127.0.0.1:8787/...`)，fetch 全部 TypeError
+- **根因(流量无数据):** `apiGet` 中写死 `TRAFFIC_API_BASE + path`，但所有调用方已拼接 `getBaseURL() + path`，导致 URL 双倍叠加(如 `http://127.0.0.1:9191http://127.0.0.1:9191/...`)，fetch 全部 TypeError
 - **影响范围:** 修正后流量监控各 API 请求 URL 正常，统计数据应正确显示
 
 ## 2026-06-03 11:10: 流量监控加载超时保护 + 渲染异常容错

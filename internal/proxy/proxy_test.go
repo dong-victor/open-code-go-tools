@@ -708,7 +708,7 @@ func TestRawClaudeSettingsConfigCreatesMissingFile(t *testing.T) {
 		t.Fatalf("GET body = %q, want empty JSON object", rr.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodPost, "/ocgt/api/config/raw", strings.NewReader(`{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:8787"}}`))
+	req = httptest.NewRequest(http.MethodPost, "/ocgt/api/config/raw", strings.NewReader(`{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:9191"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	rr = httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rr, req)
@@ -721,7 +721,7 @@ func TestRawClaudeSettingsConfigCreatesMissingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("settings file was not created: %v", err)
 	}
-	if !strings.Contains(string(data), `"ANTHROPIC_BASE_URL": "http://127.0.0.1:8787"`) {
+	if !strings.Contains(string(data), `"ANTHROPIC_BASE_URL": "http://127.0.0.1:9191"`) {
 		t.Fatalf("settings file missing formatted env: %s", data)
 	}
 }

@@ -13,7 +13,7 @@ func TestStripComments(t *testing.T) {
 		// This is a comment
 		"name": "ocgt", /* This is a
 		block comment */
-		"url": "http://127.0.0.1:8787" // inline comment
+		"url": "http://127.0.0.1:9191" // inline comment
 	}`
 
 	cleaned := stripComments(input)
@@ -23,7 +23,7 @@ func TestStripComments(t *testing.T) {
 	if strings.Contains(cleaned, "This is a\n\t\tblock comment") {
 		t.Error("Failed to strip block comments")
 	}
-	if !strings.Contains(cleaned, `"url": "http://127.0.0.1:8787"`) {
+	if !strings.Contains(cleaned, `"url": "http://127.0.0.1:9191"`) {
 		t.Error("Should preserve valid strings containing slashes")
 	}
 
@@ -32,7 +32,7 @@ func TestStripComments(t *testing.T) {
 		t.Errorf("Cleaned JSON is invalid: %v", err)
 	}
 
-	if data["name"] != "ocgt" || data["url"] != "http://127.0.0.1:8787" {
+	if data["name"] != "ocgt" || data["url"] != "http://127.0.0.1:9191" {
 		t.Error("JSON data parsed incorrectly after comment stripping")
 	}
 }
@@ -95,7 +95,7 @@ func TestVSCodeEnvIntegration(t *testing.T) {
 		t.Error("Pre-existing environment variables were lost")
 	}
 
-	if winEnv["ANTHROPIC_BASE_URL"] != "http://127.0.0.1:8787" {
+	if winEnv["ANTHROPIC_BASE_URL"] != "http://127.0.0.1:9191" {
 		t.Errorf("Unexpected base URL: %v", winEnv["ANTHROPIC_BASE_URL"])
 	}
 

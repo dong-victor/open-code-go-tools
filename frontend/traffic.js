@@ -44,7 +44,7 @@ let chartInstances = {};
 let pollTimer = null;
 
 // ── API ──
-let TRAFFIC_API_BASE = 'http://127.0.0.1:8787';
+let TRAFFIC_API_BASE = 'http://127.0.0.1:9191';
 window.setTrafficApiBase = function(url) { TRAFFIC_API_BASE = url; };
 async function apiGet(path) {
   try {

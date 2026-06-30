@@ -16,7 +16,7 @@ import (
 
 const (
 	CurrentConfigVersion           = 1
-	DefaultListen                  = "127.0.0.1:8787"
+	DefaultListen                  = "127.0.0.1:9191"
 	DefaultUpstream                = "https://opencode.ai/zen/go"
 	DefaultRequestTimeoutSeconds   = 300
 	DefaultMaxThinkingBudgetTokens = 2048
@@ -309,7 +309,7 @@ func (c Config) Validate() error {
 func ValidateListenAddress(listen string) error {
 	host, portText, err := net.SplitHostPort(strings.TrimSpace(listen))
 	if err != nil {
-		return fmt.Errorf("invalid listen address %q: expected host:port, for example 127.0.0.1:8787 or :8787", listen)
+		return fmt.Errorf("invalid listen address %q: expected host:port, for example 127.0.0.1:9191 or :9191", listen)
 	}
 	if strings.ContainsAny(host, " \t\r\n") {
 		return fmt.Errorf("invalid listen address %q: host must not contain whitespace", listen)

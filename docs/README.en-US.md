@@ -20,7 +20,7 @@ No need to mess with environment variables or edit system hosts. Open the app, p
 
 ![System Status](../assets/2026-05-30_213807.png)
 
-* **Real-time Monitoring**: Check proxy listening ports (default `127.0.0.1:8787`), upstream API status, and API Key configuration.
+* **Real-time Monitoring**: Check proxy listening ports (default `127.0.0.1:9191`), upstream API status, and API Key configuration.
 
 * **Quick Access**: See config file paths and open the directory in one click.
 
@@ -122,16 +122,26 @@ Edit this file externally and the proxy picks up changes automatically within ~3
 
 ---
 
-## 💻 CLI Reference
-
-Prefer the GUI? Skip this. But `ocgt` also has CLI commands:
-
-```powershell
-ocgt init       # Create default config
-ocgt serve      # Run proxy in the background
-ocgt claude-env # Print current profile env vars
-ocgt ccswitch   # Output CC Switch provider JSON
-ocgt version    # Show version
+## 💻 CLI Reference
+
+
+
+Prefer the GUI? Skip this. But `ocgt` also has CLI commands:
+
+
+
+```powershell
+
+ocgt init       # Create default config
+
+ocgt serve      # Run proxy in the background
+
+ocgt claude-env # Print current profile env vars
+
+ocgt ccswitch   # Output CC Switch provider JSON
+
+ocgt version    # Show version
+
 ```
 
 ---

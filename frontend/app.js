@@ -105,7 +105,7 @@ const ACCENT_PRESETS = [
 
 
 
-let API_BASE = 'http://127.0.0.1:8787';
+let API_BASE = 'http://127.0.0.1:9191';
 let systemStatus = null;
 let currentShell = 'powershell';
 let proxyReady = false;
@@ -336,7 +336,7 @@ const i18n = {
         about_close: "关闭",
         err_api_key_required: "请输入 API Key",
         err_upstream_url: "请输入有效的 http(s) 地址",
-        err_listen_addr: "请输入有效的监听地址，例如 127.0.0.1:8787 或 :8787",
+        err_listen_addr: "请输入有效的监听地址，例如 127.0.0.1:9191 或 :9191",
         err_timeout_range: "超时必须在 1-3600 秒之间",
         err_rate_limit_range: "范围必须在 1-10000 之间",
         err_rate_burst_range: "范围必须在 1-100000 之间",
@@ -734,7 +734,7 @@ const i18n = {
         about_close: "Close",
         err_api_key_required: "API Key is required",
         err_upstream_url: "Enter a valid http(s) URL",
-        err_listen_addr: "Enter a valid listen address, for example 127.0.0.1:8787 or :8787",
+        err_listen_addr: "Enter a valid listen address, for example 127.0.0.1:9191 or :9191",
         err_timeout_range: "Timeout must be 1-3600 seconds",
         err_rate_limit_range: "Range must be 1-10000",
         err_rate_burst_range: "Range must be 1-100000",
@@ -1820,7 +1820,7 @@ function parseClaudeEnvTemplate() {
 }
 
 function applyDynamicClaudeEnv(env, client) {
-    const listen = systemStatus && systemStatus.listen ? systemStatus.listen : '127.0.0.1:8787';
+    const listen = systemStatus && systemStatus.listen ? systemStatus.listen : '127.0.0.1:9191';
     const profile = dom.selectProfile && dom.selectProfile.value ? dom.selectProfile.value : (systemStatus && systemStatus.active_profile) || 'opencode-go';
     const sonnet = dom.inputSonnetMapping && dom.inputSonnetMapping.value ? dom.inputSonnetMapping.value : '';
     const haiku = dom.inputHaikuMapping && dom.inputHaikuMapping.value ? dom.inputHaikuMapping.value : '';
@@ -1834,7 +1834,7 @@ function applyDynamicClaudeEnv(env, client) {
         env.ANTHROPIC_SMALL_FAST_MODEL = haiku;
         env.CLAUDE_CODE_SUBAGENT_MODEL = haiku;
     }
-    
+
     // Write dynamic advanced values back to the env
     if (dom.envDisableNonEssential) {
         env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = dom.envDisableNonEssential.checked ? "1" : "0";
@@ -1871,7 +1871,7 @@ function applyDynamicClaudeEnv(env, client) {
     } else {
         env.ANTHROPIC_API_KEY = 'ocgt-local-proxy';
     }
-    
+
     return env;
 }
 
@@ -2025,7 +2025,7 @@ async function loadProfiles() {
             setSelectValue(dom.inputSonnetMapping, aliases.sonnet || '');
             setSelectValue(dom.inputHaikuMapping, aliases.haiku || '');
             setSelectValue(dom.inputOpusMapping, aliases.opus || '');
-            if (dom.inputQuotaCookie) dom.inputQuotaCookie.value = activeProfile.quota_cookie || ''; 
+            if (dom.inputQuotaCookie) dom.inputQuotaCookie.value = activeProfile.quota_cookie || '';
             if (dom.inputQuotaWorkspace) dom.inputQuotaWorkspace.value = activeProfile.quota_workspace_id || '';
         }
         captureOriginalSettings();
@@ -2161,7 +2161,7 @@ function restoreSettingsFromSnapshot(snapshot) {
     if (dom.inputHaikuMapping) setSelectValue(dom.inputHaikuMapping, snapshot.haiku || '');
     if (dom.inputOpusMapping) setSelectValue(dom.inputOpusMapping, snapshot.opus || '');
     if (dom.inputTimeout) dom.inputTimeout.value = snapshot.timeout || '300';
-    if (dom.inputListen) dom.inputListen.value = snapshot.listen || '127.0.0.1:8787';
+    if (dom.inputListen) dom.inputListen.value = snapshot.listen || '127.0.0.1:9191';
     if (dom.inputThinkingBudget) setThinkingBudgetValue(snapshot.thinkingBudget || '2048');
     if (dom.inputRateLimit) dom.inputRateLimit.value = snapshot.rateLimit || '';
     if (dom.inputRateBurst) dom.inputRateBurst.value = snapshot.rateBurst || '';
@@ -2623,7 +2623,7 @@ function setupSettingsHandlers() {
                 actionLabel: t('toast_confirm'),
                 actionCallback: () => {
                     if (dom.inputTimeout) dom.inputTimeout.value = '300';
-                    if (dom.inputListen) dom.inputListen.value = '127.0.0.1:8787';
+                    if (dom.inputListen) dom.inputListen.value = '127.0.0.1:9191';
                     if (dom.inputUpstream) dom.inputUpstream.value = 'https://opencode.ai/zen/go';
                     if (dom.inputThinkingBudget) setThinkingBudgetValue('2048');
                     if (dom.inputRateLimit) dom.inputRateLimit.value = '100';
@@ -2737,7 +2737,7 @@ async function handleSaveConfig() {
     const opus = dom.inputOpusMapping.value.trim();
     const upstream = dom.inputUpstream ? dom.inputUpstream.value.trim() : '';
     const timeoutSeconds = dom.inputTimeout ? dom.inputTimeout.value.trim() : '300';
-    const listenAddr = dom.inputListen ? dom.inputListen.value.trim() : '127.0.0.1:8787';
+    const listenAddr = dom.inputListen ? dom.inputListen.value.trim() : '127.0.0.1:9191';
     const thinkingBudget = dom.inputThinkingBudget ? dom.inputThinkingBudget.value.trim() : '2048';
     const rateLimit = dom.inputRateLimit ? dom.inputRateLimit.value.trim() : '';
     const rateBurst = dom.inputRateBurst ? dom.inputRateBurst.value.trim() : '';
@@ -3098,7 +3098,7 @@ function renderCompactEnvCode() {
         env = buildClaudeEnvForClient('claude-code-cli');
     } catch (_) {
         env = {
-            ANTHROPIC_BASE_URL: `http://${(systemStatus && systemStatus.listen) || '127.0.0.1:8787'}`,
+            ANTHROPIC_BASE_URL: `http://${(systemStatus && systemStatus.listen) || '127.0.0.1:9191'}`,
             ANTHROPIC_API_KEY: 'ocgt-local-proxy',
         };
     }

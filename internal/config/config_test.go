@@ -100,7 +100,7 @@ func TestWarnIfNoAPIKeyPresent(t *testing.T) {
 }
 
 func TestValidateEmptyProfiles(t *testing.T) {
-	cfg := Config{Listen: "127.0.0.1:8787", Upstream: "https://opencode.ai/zen/go"}
+	cfg := Config{Listen: "127.0.0.1:9191", Upstream: "https://opencode.ai/zen/go"}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for empty profiles")
 	}
@@ -108,7 +108,7 @@ func TestValidateEmptyProfiles(t *testing.T) {
 
 func TestValidateInvalidUpstream(t *testing.T) {
 	cfg := Config{
-		Listen:        "127.0.0.1:8787",
+		Listen:        "127.0.0.1:9191",
 		Upstream:      "not-a-url",
 		ActiveProfile: "test",
 		Profiles:      map[string]Profile{"test": {DefaultModel: "kimi-k2.6"}},
@@ -119,14 +119,14 @@ func TestValidateInvalidUpstream(t *testing.T) {
 }
 
 func TestValidateListenAddress(t *testing.T) {
-	valid := []string{"127.0.0.1:8787", "localhost:8787", ":8787", "[::1]:8787"}
+	valid := []string{"127.0.0.1:9191", "localhost:9191", ":9191", "[::1]:9191"}
 	for _, listen := range valid {
 		if err := ValidateListenAddress(listen); err != nil {
 			t.Fatalf("ValidateListenAddress(%q) returned error: %v", listen, err)
 		}
 	}
 
-	invalid := []string{"", "127.0.0.1", "http://127.0.0.1:8787", "127.0.0.1:0", "127.0.0.1:70000", "bad host:8787"}
+	invalid := []string{"", "127.0.0.1", "http://127.0.0.1:9191", "127.0.0.1:0", "127.0.0.1:70000", "bad host:9191"}
 	for _, listen := range invalid {
 		if err := ValidateListenAddress(listen); err == nil {
 			t.Fatalf("ValidateListenAddress(%q) expected error", listen)
@@ -136,7 +136,7 @@ func TestValidateListenAddress(t *testing.T) {
 
 func TestRequestTimeoutDefault(t *testing.T) {
 	cfg := Config{
-		Listen:        "127.0.0.1:8787",
+		Listen:        "127.0.0.1:9191",
 		Upstream:      "https://opencode.ai/zen/go",
 		ActiveProfile: "test",
 		Profiles:      map[string]Profile{"test": {DefaultModel: "kimi-k2.6"}},
@@ -152,7 +152,7 @@ func TestRequestTimeoutDefault(t *testing.T) {
 
 func TestThinkingBudgetDefault(t *testing.T) {
 	cfg := Config{
-		Listen:        "127.0.0.1:8787",
+		Listen:        "127.0.0.1:9191",
 		Upstream:      "https://opencode.ai/zen/go",
 		ActiveProfile: "test",
 		Profiles:      map[string]Profile{"test": {DefaultModel: "kimi-k2.6"}},
@@ -168,7 +168,7 @@ func TestThinkingBudgetDefault(t *testing.T) {
 
 func TestValidateInvalidRequestTimeout(t *testing.T) {
 	cfg := Config{
-		Listen:                "127.0.0.1:8787",
+		Listen:                "127.0.0.1:9191",
 		Upstream:              "https://opencode.ai/zen/go",
 		RequestTimeoutSeconds: 3601,
 		ActiveProfile:         "test",
@@ -181,7 +181,7 @@ func TestValidateInvalidRequestTimeout(t *testing.T) {
 
 func TestValidateInvalidThinkingBudget(t *testing.T) {
 	cfg := Config{
-		Listen:                  "127.0.0.1:8787",
+		Listen:                  "127.0.0.1:9191",
 		Upstream:                "https://opencode.ai/zen/go",
 		MaxThinkingBudgetTokens: 8193,
 		ActiveProfile:           "test",
@@ -194,7 +194,7 @@ func TestValidateInvalidThinkingBudget(t *testing.T) {
 
 func TestValidateMissingActiveProfile(t *testing.T) {
 	cfg := Config{
-		Listen:        "127.0.0.1:8787",
+		Listen:        "127.0.0.1:9191",
 		Upstream:      "https://opencode.ai/zen/go",
 		ActiveProfile: "missing",
 		Profiles:      map[string]Profile{"test": {DefaultModel: "kimi-k2.6"}},
@@ -276,7 +276,7 @@ func TestSavePreservesUnknownFields(t *testing.T) {
 	tmpFile := t.TempDir() + "/config.json"
 	initial := `{
   "version": 1,
-  "listen": "127.0.0.1:8787",
+  "listen": "127.0.0.1:9191",
   "upstream": "https://example.com",
   "request_timeout_seconds": 300,
   "active_profile": "test",
@@ -321,7 +321,7 @@ func TestSavePreservesUnknownFields(t *testing.T) {
 	}
 
 	// Verify known fields are also present
-	if raw["listen"] != "127.0.0.1:8787" {
+	if raw["listen"] != "127.0.0.1:9191" {
 		t.Fatalf("listen should be preserved, got %v", raw["listen"])
 	}
 }

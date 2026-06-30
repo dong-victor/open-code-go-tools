@@ -155,7 +155,7 @@ func (s *Server) findPIDByPort(port string) int {
 	switch runtime.GOOS {
 	case "windows":
 		// Use findstr to filter by port first, avoiding locale-dependent state parsing.
-		// The trailing space after :PORT prevents partial matches (e.g., :8787 vs :87870).
+		// The trailing space after :PORT prevents partial matches (e.g., :9191 vs :91910).
 		cmd = exec.CommandContext(ctx, "cmd", "/C", "netstat -ano | findstr \":"+port+" \"")
 	default:
 		// Unix: lsof -ti :PORT returns just the PID
@@ -173,7 +173,7 @@ func (s *Server) findPIDByPort(port string) int {
 	// Parse findstr output: locate the PID from the last whitespace-delimited field.
 	// Netstat output structure (locale-independent for the numeric parts):
 	//   Proto  Local Address    Foreign Address   State         PID
-	//   TCP    127.0.0.1:8787   0.0.0.0:0         LISTENING     12345
+	//   TCP    127.0.0.1:9191   0.0.0.0:0         LISTENING     12345
 	for _, line := range strings.Split(string(out), "\n") {
 		if !strings.Contains(line, ":"+port+" ") {
 			continue
