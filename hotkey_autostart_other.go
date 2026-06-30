@@ -15,3 +15,5 @@ func setAutoStart(enabled bool) error {
 	log.Printf("[autostart] auto-start not supported on this platform")
 	return nil
 }
+
+func hideWindowNative() {}

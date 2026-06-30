@@ -76,3 +76,5 @@ func setAutoStart(enabled bool) error {
 	exec.Command("launchctl", "unload", plistPath).Run()
 	return exec.Command("launchctl", "load", plistPath).Run()
 }
+
+func hideWindowNative() {}

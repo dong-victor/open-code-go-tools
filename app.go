@@ -122,11 +122,10 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	go a.actionLoop()
 
-	// Check silent-start preference BEFORE the window is shown by Wails.
-	// WindowHide at this point prevents the initial flash.
+	// Window visibility is controlled by StartHidden in Wails options (set in main.go).
+	// Track initial state from preferences.
 	prefs, err := preferences.Load("")
 	if err == nil && prefs.SilentStart {
-		wailsruntime.WindowHide(ctx)
 		a.windowVisible.Store(false)
 	} else {
 		a.windowVisible.Store(true)
@@ -272,7 +271,10 @@ func (a *App) domReady(ctx context.Context) {
 		prefs = preferences.Preferences{}
 	}
 
+	// When StartHidden is true (silent start), Wails never shows the window —
+	// it stays completely invisible. For normal start, Wails already showed it.
 	if !prefs.SilentStart {
+		// Window was shown by Wails; center and focus it
 		a.showMainWindow(true)
 	}
 

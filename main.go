@@ -37,6 +37,7 @@ import (
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/hub"
+	"github.com/ethan-blue/open-code-go-tools/internal/preferences"
 	"github.com/ethan-blue/open-code-go-tools/internal/proxy"
 	"github.com/ethan-blue/open-code-go-tools/internal/version"
 	"github.com/wailsapp/wails/v2"
@@ -76,11 +77,16 @@ func runWailsGui() {
 		log.Println("Failed to open proxy.log for writing:", err)
 	}
 
+	// Read preferences before Wails creates the window — StartHidden prevents
+	// the window from ever being shown, giving true silent startup.
+	prefs, _ := preferences.Load("")
+
 	// Configure Wails options
 	err = wails.Run(&options.App{
 		Title:             "ocgt Control Panel / 控制面板",
 		Width:             1100,
 		Height:            850,
+		StartHidden:        prefs.SilentStart,
 		HideWindowOnClose: false,
 		OnBeforeClose:     app.beforeClose,
 		AssetServer: &assetserver.Options{

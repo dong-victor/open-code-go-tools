@@ -171,3 +171,20 @@ func setAutoStart(enabled bool) error {
 	}
 	return nil
 }
+
+// hideWindowNative bypasses the Wails runtime and uses the Win32 API directly
+// to find and hide our main window. This is more reliable during early startup
+// when the Wails dispatch queue may not be processing yet.
+func hideWindowNative() {
+	user32 := syscall.NewLazyDLL("user32.dll")
+	findWindow := user32.NewProc("FindWindowW")
+	showWindow := user32.NewProc("ShowWindow")
+
+	const swHide = 0
+
+	title, _ := syscall.UTF16PtrFromString("ocgt Control Panel / 控制面板")
+	hwnd, _, _ := findWindow.Call(0, uintptr(unsafe.Pointer(title)))
+	if hwnd != 0 {
+		showWindow.Call(hwnd, swHide)
+	}
+}
