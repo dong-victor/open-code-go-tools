@@ -394,6 +394,15 @@ const i18n = {
         pref_behavior: "行为",
 
         pref_behavior_desc: "关闭窗口与系统交互",
+        pref_auto_start: "开机自启",
+        pref_auto_start_desc: "系统启动时自动运行 ocgt",
+        pref_silent_start: "静默启动到托盘",
+        pref_silent_start_desc: "启动时最小化到系统托盘，不显示主窗口",
+        pref_hotkey: "全局快捷键",
+        pref_hotkey_desc: "设置全局快捷键显示/隐藏主窗口",
+        pref_hotkey_modifiers: "修饰键",
+        pref_hotkey_key: "按键",
+        pref_hotkey_hint: "例如 Ctrl+Shift+O 按下即可显示/隐藏窗口",
         pref_logs: "日志",
         pref_logs_desc: "日志保存路径与保留周期",
         pref_log_save: "GUI 日志保存",
@@ -767,6 +776,15 @@ const i18n = {
         pref_behavior: "Behavior",
 
         pref_behavior_desc: "Window close and system interaction",
+        pref_auto_start: "Auto-start on Boot",
+        pref_auto_start_desc: "Automatically run ocgt when system starts",
+        pref_silent_start: "Silent Start to Tray",
+        pref_silent_start_desc: "Start minimized to tray without showing main window",
+        pref_hotkey: "Global Hotkey",
+        pref_hotkey_desc: "Set a global hotkey to show/hide the main window",
+        pref_hotkey_modifiers: "Modifiers",
+        pref_hotkey_key: "Key",
+        pref_hotkey_hint: "e.g. Ctrl+Shift+O to toggle the window",
         pref_logs: "Logs",
         pref_logs_desc: "Log directory and retention policy",
         pref_log_save: "GUI Log Saving",
@@ -1020,6 +1038,10 @@ function cacheDom() {
     dom.inputHaikuMapping = document.getElementById('mapping-haiku-input');
     dom.inputOpusMapping = document.getElementById('mapping-opus-input');
     dom.inputCloseBehavior = document.getElementById('close-behavior-input');
+    dom.inputAutoStart = document.getElementById('auto-start-input');
+    dom.inputSilentStart = document.getElementById('silent-start-input');
+    dom.selectHotkeyModifiers = document.getElementById('hotkey-modifiers-input');
+    dom.selectHotkeyKey = document.getElementById('hotkey-key-input');
     dom.inputLogEnabled = document.getElementById('log-enabled-input');
     dom.inputLogDirectory = document.getElementById('log-directory-input');
     dom.inputLogRetention = document.getElementById('log-retention-input');
@@ -1580,6 +1602,18 @@ async function saveUIPreferences() {
     }
 }
 
+async function saveBehaviorPreferences() {
+    const app = getWailsApp();
+    if (!app || typeof app.SaveAllPreferences !== 'function') return;
+    const closeBehavior = dom.inputCloseBehavior ? normalizeCloseBehavior(dom.inputCloseBehavior.value) : '';
+    const autoStart = dom.inputAutoStart ? String(dom.inputAutoStart.checked) : '';
+    const silentStart = dom.inputSilentStart ? String(dom.inputSilentStart.checked) : '';
+    const hotkeyModifiers = dom.selectHotkeyModifiers ? dom.selectHotkeyModifiers.value : '';
+    const hotkeyKey = dom.selectHotkeyKey ? dom.selectHotkeyKey.value : '';
+    const res = await app.SaveAllPreferences(closeBehavior, '', '', -1, '', '', '', autoStart, silentStart, hotkeyModifiers, hotkeyKey);
+    if (res && res !== 'success') console.warn('SaveAllPreferences:', res);
+}
+
 function applyAccentHue(hue, options = {}) {
     hue = normalizeHue(hue);
     document.documentElement.style.setProperty('--accent-h', hue);
@@ -1997,6 +2031,18 @@ async function loadPreferences() {
         if (dom.inputCloseBehavior) {
             dom.inputCloseBehavior.value = normalizeCloseBehavior(prefs && prefs.close_behavior);
         }
+        if (dom.inputAutoStart) {
+            dom.inputAutoStart.checked = prefs && prefs.auto_start === 'true';
+        }
+        if (dom.inputSilentStart) {
+            dom.inputSilentStart.checked = prefs && prefs.silent_start === 'true';
+        }
+        if (dom.selectHotkeyModifiers) {
+            dom.selectHotkeyModifiers.value = (prefs && prefs.hotkey_modifiers) || 'Ctrl+Shift';
+        }
+        if (dom.selectHotkeyKey) {
+            dom.selectHotkeyKey.value = (prefs && prefs.hotkey_key) || 'O';
+        }
         if (dom.inputLogEnabled) {
             dom.inputLogEnabled.checked = !prefs || prefs.log_enabled !== 'false';
         }
@@ -2012,6 +2058,8 @@ async function loadPreferences() {
     } catch (err) {
         console.error('Failed to load preferences:', err);
         if (dom.inputCloseBehavior) dom.inputCloseBehavior.value = DEFAULT_CLOSE_BEHAVIOR;
+        if (dom.inputAutoStart) dom.inputAutoStart.checked = false;
+        if (dom.inputSilentStart) dom.inputSilentStart.checked = false;
         if (dom.inputLogEnabled) dom.inputLogEnabled.checked = true;
         if (dom.inputLogRetention) dom.inputLogRetention.value = '14';
         applyUIPreferences({});
@@ -2066,7 +2114,11 @@ function getSettingsSnapshot() {
         envMaxMcpTokens: dom.envMaxMcpTokens ? dom.envMaxMcpTokens.value : '',
         envApiTimeout: dom.envApiTimeout ? dom.envApiTimeout.value : '',
         envMcpTimeout: dom.envMcpTimeout ? dom.envMcpTimeout.value : '',
-        closeBehavior: dom.inputCloseBehavior ? dom.inputCloseBehavior.value : ''
+        closeBehavior: dom.inputCloseBehavior ? dom.inputCloseBehavior.value : '',
+        autoStart: dom.inputAutoStart ? dom.inputAutoStart.checked : false,
+        silentStart: dom.inputSilentStart ? dom.inputSilentStart.checked : false,
+        hotkeyModifiers: dom.selectHotkeyModifiers ? dom.selectHotkeyModifiers.value : 'Ctrl+Shift',
+        hotkeyKey: dom.selectHotkeyKey ? dom.selectHotkeyKey.value : 'O'
     };
 }
 
@@ -2093,6 +2145,10 @@ function restoreSettingsFromSnapshot(snapshot) {
     if (dom.inputQuotaWorkspace) dom.inputQuotaWorkspace.value = snapshot.quotaWorkspace || '';
     if (dom.inputClaudeEnvTemplate) dom.inputClaudeEnvTemplate.value = snapshot.claudeEnvTemplate || '{}';
     if (dom.inputCloseBehavior) dom.inputCloseBehavior.value = normalizeCloseBehavior(snapshot.closeBehavior);
+    if (dom.inputAutoStart) dom.inputAutoStart.checked = !!snapshot.autoStart;
+    if (dom.inputSilentStart) dom.inputSilentStart.checked = !!snapshot.silentStart;
+    if (dom.selectHotkeyModifiers) dom.selectHotkeyModifiers.value = snapshot.hotkeyModifiers || 'Ctrl+Shift';
+    if (dom.selectHotkeyKey) dom.selectHotkeyKey.value = snapshot.hotkeyKey || 'O';
     clearFieldErrors();
     clearChangesDetected();
     renderCompactEnvCode();
@@ -2576,6 +2632,36 @@ function setupSettingsHandlers() {
             checkForChanges();
             try { await callWails('SavePreferences', normalizeCloseBehavior(dom.inputCloseBehavior.value)); }
             catch (err) { console.error('Failed to save close behavior:', err); }
+        });
+    }
+
+    // Auto-start toggle auto-save
+    if (dom.inputAutoStart) {
+        dom.inputAutoStart.addEventListener('change', async () => {
+            try { await saveBehaviorPreferences(); }
+            catch (err) { console.error('Failed to save auto-start:', err); }
+        });
+    }
+
+    // Silent-start toggle auto-save
+    if (dom.inputSilentStart) {
+        dom.inputSilentStart.addEventListener('change', async () => {
+            try { await saveBehaviorPreferences(); }
+            catch (err) { console.error('Failed to save silent-start:', err); }
+        });
+    }
+
+    // Hotkey modifier/key change auto-save
+    if (dom.selectHotkeyModifiers) {
+        dom.selectHotkeyModifiers.addEventListener('change', async () => {
+            try { await saveBehaviorPreferences(); }
+            catch (err) { console.error('Failed to save hotkey modifiers:', err); }
+        });
+    }
+    if (dom.selectHotkeyKey) {
+        dom.selectHotkeyKey.addEventListener('change', async () => {
+            try { await saveBehaviorPreferences(); }
+            catch (err) { console.error('Failed to save hotkey key:', err); }
         });
     }
 

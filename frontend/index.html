@@ -1143,6 +1143,52 @@
                     </div>
                 </div>
 
+                <!-- Auto-start & Silent Start -->
+                <div class="settings-panel-row">
+                    <span class="sp-row-label" data-i18n="pref_auto_start">开机自启</span>
+                    <label class="sp-switch">
+                        <input type="checkbox" id="auto-start-input">
+                        <span class="sp-switch-track"></span>
+                    </label>
+                </div>
+                <div class="settings-panel-row">
+                    <span class="sp-row-label" data-i18n="pref_silent_start">静默启动到托盘</span>
+                    <label class="sp-switch">
+                        <input type="checkbox" id="silent-start-input">
+                        <span class="sp-switch-track"></span>
+                    </label>
+                </div>
+
+                <!-- Global Hotkey -->
+                <div class="settings-panel-row settings-panel-row-stack">
+                    <span class="sp-row-label" data-i18n="pref_hotkey">全局快捷键</span>
+                    <div class="settings-panel-inline" style="gap:6px;">
+                        <div class="select-wrap select-wrap-sm">
+                            <select id="hotkey-modifiers-input">
+                                <option value="Ctrl+Shift">Ctrl+Shift</option>
+                                <option value="Ctrl+Alt">Ctrl+Alt</option>
+                                <option value="Alt+Shift">Alt+Shift</option>
+                                <option value="Ctrl+Alt+Shift">Ctrl+Alt+Shift</option>
+                            </select>
+                            <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                        <span style="color:var(--text-muted);">+</span>
+                        <div class="select-wrap select-wrap-sm" style="width:70px;">
+                            <select id="hotkey-key-input">
+                                <option value="O">O</option>
+                                <option value="P">P</option>
+                                <option value="Q">Q</option>
+                                <option value="H">H</option>
+                                <option value="S">S</option>
+                                <option value="T">T</option>
+                                <option value="F12">F12</option>
+                            </select>
+                            <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                    </div>
+                    <span style="font-size:11px;color:var(--text-muted);margin-top:4px;" data-i18n="pref_hotkey_hint">例如 Ctrl+Shift+O 按下即可显示/隐藏窗口</span>
+                </div>
+
                 <div class="sp-divider"></div>
 
                 <!-- Logs -->

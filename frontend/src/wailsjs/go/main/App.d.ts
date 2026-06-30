@@ -47,6 +47,8 @@ export function RemoveVSCodeEnv():Promise<string>;
 
 export function RepairAllConfigurations():Promise<string>;
 
+export function SaveAllPreferences(arg1:string,arg2:string,arg3:string,arg4:number,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<string>;
+
 export function SaveHubConfig(arg1:boolean,arg2:string,arg3:string,arg4:string,arg5:number):Promise<string>;
 
 export function SaveLogPreferences(arg1:boolean,arg2:string,arg3:number):Promise<string>;
@@ -64,3 +66,5 @@ export function SetupClaudeDesktopApp():Promise<string>;
 export function ShowAboutDialog():Promise<void>;
 
 export function SyncConfiguredIntegrations():Promise<string>;
+
+export function ToggleMainWindow():Promise<void>;

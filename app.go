@@ -39,6 +39,7 @@ type App struct {
 	forceQuit     atomic.Bool
 	setupTrayOnce sync.Once
 	exitOnce      sync.Once
+	windowVisible atomic.Bool
 }
 
 type trayAction int
@@ -73,6 +74,7 @@ func (a *App) showMainWindow(center bool) {
 	if center {
 		wailsruntime.WindowCenter(a.ctx)
 	}
+	a.windowVisible.Store(true)
 }
 
 func (a *App) hideMainWindow() {
@@ -81,6 +83,7 @@ func (a *App) hideMainWindow() {
 	}
 	wailsruntime.WindowMinimise(a.ctx)
 	wailsruntime.WindowHide(a.ctx)
+	a.windowVisible.Store(false)
 }
 
 func (a *App) enqueueTrayAction(action trayAction) {
@@ -253,8 +256,20 @@ func generateLocalAuthToken() (string, error) {
 // domReady is called when the frontend DOM is fully loaded and ready.
 func (a *App) domReady(ctx context.Context) {
 	a.ctx = ctx
-	// Force the main window to be shown, unminimized, centered and focused on startup
-	a.showMainWindow(true)
+
+	prefs, err := preferences.Load("")
+	if err != nil {
+		prefs = preferences.Preferences{}
+	}
+
+	if prefs.SilentStart {
+		a.hideMainWindow()
+	} else {
+		a.showMainWindow(true)
+	}
+
+	// Register global hotkey if configured
+	a.registerHotkeyFromPrefs(prefs)
 
 	// Initialize the system tray after the Wails WebView2 is fully loaded.
 	// A short delay prevents Windows message pump race conditions on startup.
@@ -1155,6 +1170,64 @@ func (a *App) SaveUIPreferences(theme, language string, accentHue int, lastView,
 	return "success"
 }
 
+// SaveAllPreferences saves the full preferences object including auto-start, silent-start, and hotkey.
+func (a *App) SaveAllPreferences(closeBehavior, theme, language string, accentHue int, lastView, compactShell, expandedIntegrationsJSON, autoStart, silentStart, hotkeyModifiers, hotkeyKey string) string {
+	prefs, err := preferences.Load("")
+	if err != nil {
+		prefs = preferences.Preferences{}
+	}
+	if strings.TrimSpace(closeBehavior) != "" {
+		prefs.CloseBehavior = closeBehavior
+	}
+	if strings.TrimSpace(theme) != "" {
+		prefs.Theme = theme
+	}
+	if strings.TrimSpace(language) != "" {
+		prefs.Language = language
+	}
+	if accentHue >= 0 {
+		prefs.AccentHue = accentHue
+	}
+	if strings.TrimSpace(lastView) != "" {
+		prefs.LastView = lastView
+	}
+	if strings.TrimSpace(compactShell) != "" {
+		prefs.CompactShell = compactShell
+	}
+	if strings.TrimSpace(expandedIntegrationsJSON) != "" {
+		var expanded []string
+		if err := json.Unmarshal([]byte(expandedIntegrationsJSON), &expanded); err != nil {
+			return "validation error: expanded integrations must be a JSON array"
+		}
+		prefs.ExpandedIntegrations = expanded
+	}
+	if autoStart != "" {
+		prefs.AutoStart = autoStart == "true"
+	}
+	if silentStart != "" {
+		prefs.SilentStart = silentStart == "true"
+	}
+	if strings.TrimSpace(hotkeyModifiers) != "" {
+		prefs.HotkeyModifiers = strings.TrimSpace(hotkeyModifiers)
+	}
+	if strings.TrimSpace(hotkeyKey) != "" {
+		prefs.HotkeyKey = strings.TrimSpace(hotkeyKey)
+	}
+	if err := prefs.Save(""); err != nil {
+		return "save error: " + err.Error()
+	}
+
+	// Apply auto-start to system
+	if err := a.applyAutoStart(prefs.AutoStart); err != nil {
+		log.Println("[GUI preferences] auto-start apply error:", err)
+	}
+
+	// Re-register hotkey
+	a.registerHotkeyFromPrefs(prefs)
+
+	return "success"
+}
+
 // GetPreferences returns GUI-only preferences. These are intentionally kept
 // outside the proxy config so CLI/server config stays portable.
 func (a *App) GetPreferences() map[string]string {
@@ -1188,6 +1261,10 @@ func (a *App) GetPreferences() map[string]string {
 		"last_view":             prefs.LastView,
 		"compact_shell":         prefs.CompactShell,
 		"expanded_integrations": string(expanded),
+		"auto_start":            strconv.FormatBool(prefs.AutoStart),
+		"silent_start":          strconv.FormatBool(prefs.SilentStart),
+		"hotkey_modifiers":      prefs.HotkeyModifiers,
+		"hotkey_key":            prefs.HotkeyKey,
 	}
 }
 
@@ -1286,4 +1363,38 @@ func removeLegacyCloseBehaviorFromConfig() error {
 		return err
 	}
 	return os.WriteFile(path, append(out, '\n'), 0o600)
+}
+
+// ToggleMainWindow shows the window if hidden, hides if shown. Called by global hotkey.
+func (a *App) ToggleMainWindow() {
+	if a.ctx == nil {
+		return
+	}
+	if a.windowVisible.Load() {
+		a.hideMainWindow()
+	} else {
+		a.showMainWindow(true)
+	}
+}
+
+// registerHotkeyFromPrefs registers or unregisters the global hotkey based on preferences.
+func (a *App) registerHotkeyFromPrefs(prefs preferences.Preferences) {
+	stopGlobalHotkey()
+	if prefs.HotkeyModifiers == "" || prefs.HotkeyKey == "" {
+		return
+	}
+	if err := startGlobalHotkey(prefs.HotkeyModifiers, prefs.HotkeyKey, func() {
+		if a.windowVisible.Load() {
+			a.enqueueTrayAction(trayActionHide)
+		} else {
+			a.enqueueTrayAction(trayActionShow)
+		}
+	}); err != nil {
+		log.Println("[hotkey] register failed:", err)
+	}
+}
+
+// applyAutoStart enables or disables auto-start with the operating system.
+func (a *App) applyAutoStart(enabled bool) error {
+	return setAutoStart(enabled)
 }

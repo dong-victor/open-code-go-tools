@@ -19,6 +19,10 @@ const (
 	DefaultCompactShell     = "powershell"
 	DefaultHubEnabled       = false
 	DefaultHubPushInterval  = 120
+	DefaultAutoStart        = false
+	DefaultSilentStart      = false
+	DefaultHotkeyModifiers  = "Ctrl+Shift"
+	DefaultHotkeyKey        = "O"
 )
 
 type Preferences struct {
@@ -37,6 +41,10 @@ type Preferences struct {
 	HubSecret            string   `json:"-"`
 	HubDeviceName        string   `json:"hub_device_name,omitempty"`
 	HubPushIntervalSec   int      `json:"hub_push_interval_sec"`
+	AutoStart            bool     `json:"auto_start"`
+	SilentStart          bool     `json:"silent_start"`
+	HotkeyModifiers      string   `json:"hotkey_modifiers,omitempty"`
+	HotkeyKey            string   `json:"hotkey_key,omitempty"`
 }
 
 func DefaultPath() (string, error) {
@@ -143,6 +151,12 @@ func (p *Preferences) applyDefaults() {
 	if p.HubPushIntervalSec == 0 {
 		p.HubPushIntervalSec = DefaultHubPushInterval
 	}
+	if strings.TrimSpace(p.HotkeyModifiers) == "" {
+		p.HotkeyModifiers = DefaultHotkeyModifiers
+	}
+	if strings.TrimSpace(p.HotkeyKey) == "" {
+		p.HotkeyKey = DefaultHotkeyKey
+	}
 }
 
 func (p Preferences) Validate() error {
@@ -172,6 +186,12 @@ func (p Preferences) Validate() error {
 	}
 	if p.HubEnabled && (p.HubPushIntervalSec < 30 || p.HubPushIntervalSec > 1800) {
 		return fmt.Errorf("hub_push_interval_sec must be between 30 and 1800 when hub is enabled, got %d", p.HubPushIntervalSec)
+	}
+	if strings.TrimSpace(p.HotkeyModifiers) != "" && !IsValidHotkeyModifiers(p.HotkeyModifiers) {
+		return fmt.Errorf("invalid hotkey_modifiers %q, must be combination of Ctrl, Alt, Shift, Win (e.g. 'Ctrl+Shift')", p.HotkeyModifiers)
+	}
+	if strings.TrimSpace(p.HotkeyKey) != "" && !IsValidHotkeyKey(p.HotkeyKey) {
+		return fmt.Errorf("invalid hotkey_key %q, must be a single character A-Z, 0-9, or F1-F24", p.HotkeyKey)
 	}
 	seen := map[string]bool{}
 	for _, item := range p.ExpandedIntegrations {
@@ -229,6 +249,38 @@ func IsValidCompactShell(value string) bool {
 	default:
 		return false
 	}
+}
+
+func IsValidHotkeyModifiers(value string) bool {
+	parts := strings.Split(value, "+")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		switch p {
+		case "Ctrl", "Alt", "Shift", "Win":
+		default:
+			return false
+		}
+	}
+	return len(parts) > 0
+}
+
+func IsValidHotkeyKey(value string) bool {
+	if len(value) == 0 {
+		return false
+	}
+	r := []rune(value)
+	if len(r) == 1 {
+		// Single character: A-Z, 0-9, or F1-F24 format
+		ch := r[0]
+		if (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') {
+			return true
+		}
+	}
+	// F1-F24
+	if len(r) >= 2 && r[0] == 'F' {
+		return true
+	}
+	return false
 }
 
 func IsValidIntegration(value string) bool {

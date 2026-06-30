@@ -94,6 +94,10 @@ export function RepairAllConfigurations() {
   return window['go']['main']['App']['RepairAllConfigurations']();
 }
 
+export function SaveAllPreferences(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
+  return window['go']['main']['App']['SaveAllPreferences'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
+}
+
 export function SaveHubConfig(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['SaveHubConfig'](arg1, arg2, arg3, arg4, arg5);
 }
@@ -128,4 +132,8 @@ export function ShowAboutDialog() {
 
 export function SyncConfiguredIntegrations() {
   return window['go']['main']['App']['SyncConfiguredIntegrations']();
+}
+
+export function ToggleMainWindow() {
+  return window['go']['main']['App']['ToggleMainWindow']();
 }

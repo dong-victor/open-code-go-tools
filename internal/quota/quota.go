@@ -349,13 +349,33 @@ func fetchQuotaViaPage(cookie, workspaceID string) (*QuotaData, error) {
 	return parseGoUsage(string(body))
 }
 
-// parseGoUsage tries JSON first, then falls back to regex.
+// parseGoUsage tries multiple strategies: JSON, JSON embedded in HTML, then regex fallbacks.
 func parseGoUsage(text string) (*QuotaData, error) {
+	// Strategy 1: Direct JSON unmarshal (page returns pure JSON)
 	data, err := parseGoUsageJSON(text)
 	if err == nil && data != nil {
 		return data, nil
 	}
-	return parseGoUsageRegex(text)
+
+	// Strategy 2: Extract JSON from <script> tags or inline JS objects
+	data, err = parseGoUsageFromScriptTags(text)
+	if err == nil && data != nil {
+		return data, nil
+	}
+
+	// Strategy 3: Regex fallback with multiple pattern variants
+	data, err = parseGoUsageRegex(text)
+	if err == nil && data != nil {
+		return data, nil
+	}
+
+	// Strategy 4: Try alternate regex patterns (snake_case / different nesting)
+	data, err = parseGoUsageRegexAlt(text)
+	if err == nil && data != nil {
+		return data, nil
+	}
+
+	return nil, fmt.Errorf("failed to parse rollingUsage from response")
 }
 
 // parseGoUsageJSON attempts to unmarshal the page body as JSON.
@@ -382,6 +402,38 @@ func parseGoUsageJSON(text string) (*QuotaData, error) {
 		Monthly:   monthly,
 		FetchedAt: time.Now(),
 	}, nil
+}
+
+// parseGoUsageFromScriptTags extracts JSON blocks from <script> tags or inline JS objects.
+func parseGoUsageFromScriptTags(text string) (*QuotaData, error) {
+	// Try to find JSON blocks containing "rollingUsage" inside script tags or as inline objects
+	scriptRe := regexp.MustCompile(`(?s)<script[^>]*>\s*(?:window\.__[A-Z_]+\s*=\s*)?(\{[\s\S]*?"rollingUsage"[\s\S]*?\})\s*(?:;)?\s*</script>`)
+	matches := scriptRe.FindStringSubmatch(text)
+	if len(matches) < 2 {
+		// Try without script tags: find any JSON object containing rollingUsage
+		jsonObjRe := regexp.MustCompile(`(?s)\{[\s\S]*?"rollingUsage"[\s\S]*?\}`)
+		m := jsonObjRe.FindString(text)
+		if m != "" {
+			return parseGoUsageJSON(m)
+		}
+		return nil, fmt.Errorf("no JSON block with rollingUsage found in page")
+	}
+	return parseGoUsageJSON(matches[1])
+}
+
+// pageGoUsageAlt supports alternate JSON key names (snake_case, different nesting).
+type pageGoUsageAlt struct {
+	RollingUsage  *windowData `json:"rolling_usage"`
+	WeeklyUsage   *windowData `json:"weekly_usage"`
+	MonthlyUsage  *windowData `json:"monthly_usage"`
+	Rolling       *windowData `json:"rolling"`
+	Weekly        *windowData `json:"weekly"`
+	Monthly       *windowData `json:"monthly"`
+	Data          *struct {
+		RollingUsage *windowData `json:"rollingUsage"`
+		WeeklyUsage  *windowData `json:"weeklyUsage"`
+		MonthlyUsage *windowData `json:"monthlyUsage"`
+	} `json:"data"`
 }
 
 // parseGoUsageRegex extracts window data from text/javascript responses (fallback).
@@ -412,6 +464,62 @@ func parseGoUsageRegex(text string) (*QuotaData, error) {
 	weekly, wok := extract("weeklyUsage")
 	if !rok || !wok {
 		return nil, fmt.Errorf("failed to parse usagePercent from page response")
+	}
+
+	result := &QuotaData{
+		Rolling:   buildUsage("", rolling.pct, rolling.resetMs),
+		Weekly:    buildUsage("", weekly.pct, weekly.resetMs),
+		FetchedAt: time.Now(),
+	}
+	if monthly, mok := extract("monthlyUsage"); mok {
+		m := buildUsage("", monthly.pct, monthly.resetMs)
+		if m.Status != "unlimited" {
+			result.Monthly = &m
+		}
+	}
+	return result, nil
+}
+
+// parseGoUsageRegexAlt uses alternate regex patterns for different response formats.
+func parseGoUsageRegexAlt(text string) (*QuotaData, error) {
+	type windowMatch struct {
+		pct     int
+		resetMs int
+	}
+
+	// Alternate pattern: key might use colon or equals, nested in different JSON/JS structure
+	extract := func(key string) (windowMatch, bool) {
+		patterns := []string{
+			// Pattern 1: "rollingUsage": {"usagePercent": 45, "resetInSec": 3600}
+			key + `"?\s*[:=]\s*\{[^}]*?"?usagePercent"?\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)`,
+			// Pattern 2: usagePercent might be "usedPercent"
+			key + `[^}]*?"?usedPercent"?\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)`,
+			// Pattern 3: key with underscore: rolling_usage
+			key + `[^}]*?usage_percent"?\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)`,
+			// Pattern 4: numeric value with % suffix
+			key + `[^}]*?"?percent"?\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)`,
+		}
+		for _, pat := range patterns {
+			re := regexp.MustCompile(pat)
+			pm := re.FindStringSubmatch(text)
+			if pm == nil {
+				continue
+			}
+			pct := clampPct(int(parseFloat(pm[1])))
+			resetSec := 0
+			resetRe := regexp.MustCompile(key + `[^}]*?resetInSec"?\s*[:=]\s*([0-9]+)`)
+			if rm := resetRe.FindStringSubmatch(text); rm != nil {
+				resetSec, _ = strconv.Atoi(rm[1])
+			}
+			return windowMatch{pct: pct, resetMs: resetSec}, true
+		}
+		return windowMatch{}, false
+	}
+
+	rolling, rok := extract("rollingUsage")
+	weekly, wok := extract("weeklyUsage")
+	if !rok || !wok {
+		return nil, fmt.Errorf("failed to parse usage percent from response (all patterns exhausted)")
 	}
 
 	result := &QuotaData{
