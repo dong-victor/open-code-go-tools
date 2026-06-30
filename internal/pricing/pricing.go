@@ -1,5 +1,7 @@
 package pricing
 
+import "strings"
+
 // ModelPrice 单个模型的定价信息
 type ModelPrice struct {
 	InputPricePer1M   float64 // Input $/1M tokens
@@ -34,10 +36,13 @@ type LimitUsage struct {
 // 模型名使用小写 + 连字符格式，匹配 API 返回的 model 字段
 var ModelPrices = map[string]ModelPrice{
 	// GLM (Zhipu)
+	"glm-5.2":             {InputPricePer1M: 1.60, OutputPricePer1M: 5.00, CacheReadPricePer1M: 0.30, CacheWritePricePer1M: 0, Provider: "Zhipu"},
 	"glm-5.1":             {InputPricePer1M: 1.40, OutputPricePer1M: 4.40, CacheReadPricePer1M: 0.26, CacheWritePricePer1M: 0, Provider: "Zhipu"},
 	"glm-5":               {InputPricePer1M: 1.00, OutputPricePer1M: 3.20, CacheReadPricePer1M: 0.20, CacheWritePricePer1M: 0, Provider: "Zhipu"},
 
 	// Kimi (Moonshot)
+	"kimi-k2.7-code":      {InputPricePer1M: 1.20, OutputPricePer1M: 4.80, CacheReadPricePer1M: 0.20, CacheWritePricePer1M: 0, Provider: "Moonshot"},
+	"kimi-k2.7":           {InputPricePer1M: 1.20, OutputPricePer1M: 4.80, CacheReadPricePer1M: 0.20, CacheWritePricePer1M: 0, Provider: "Moonshot"},
 	"kimi-k2.6":           {InputPricePer1M: 0.95, OutputPricePer1M: 4.00, CacheReadPricePer1M: 0.16, CacheWritePricePer1M: 0, Provider: "Moonshot"},
 	"kimi-k2.5":           {InputPricePer1M: 0.60, OutputPricePer1M: 3.00, CacheReadPricePer1M: 0.10, CacheWritePricePer1M: 0, Provider: "Moonshot"},
 
@@ -52,6 +57,7 @@ var ModelPrices = map[string]ModelPrice{
 
 	// Qwen (Alibaba)
 	"qwen3.7-max":         {InputPricePer1M: 2.50, OutputPricePer1M: 7.50, CacheReadPricePer1M: 0.50, CacheWritePricePer1M: 3.125, Provider: "Alibaba"},
+	"qwen3.7-plus":        {InputPricePer1M: 1.00, OutputPricePer1M: 4.50, CacheReadPricePer1M: 0.15, CacheWritePricePer1M: 1.00, Provider: "Alibaba"},
 	"qwen3.6-plus":        {InputPricePer1M: 0.50, OutputPricePer1M: 3.00, CacheReadPricePer1M: 0.05, CacheWritePricePer1M: 0.625, Provider: "Alibaba"},
 
 	// DeepSeek
@@ -69,9 +75,60 @@ var SpendingLimits = []SpendingLimit{
 	{Label: "每月限制", Limit: 60.00},
 }
 
+// ModelRequestQuota 官方给定的每个模型月度请求配额（OpenCode Go 套餐）
+// 来源: OpenCode Go 官方定价页 - 每月可发送请求数
+// 注意: 这些是硬编码的官方配额，不要计算，直接使用
+var ModelRequestQuota = map[string]int{
+	// Big Pickle 和免费模型（共享配额）
+	"big-pickle":          200,
+	"free":                200,
+
+	// GLM (Zhipu)
+	"glm-5.2":             880,
+	"glm-5.1":             880,
+	"glm-5":               880,
+
+	// Qwen (Alibaba)
+	"qwen3.7-max":         950,
+	"qwen3.7-plus":        4300,
+	"qwen3.6-plus":        4300,
+	"qwen3.5-plus":        4300,
+
+	// Kimi (Moonshot)
+	"kimi-k2.7-code":      1150,
+	"kimi-k2.7":           1150,
+	"kimi-k2.6":           1150,
+	"kimi-k2.5":           1150,
+
+	// MiMo
+	"mimo-v2.5-pro":       3250,
+	"mimo-v2.5":           30100,
+
+	// DeepSeek
+	"deepseek-v4-pro":     3450,
+	"deepseek-v4-flash":   31650,
+
+	// MiniMax (3x usage)
+	"minimax-m3":          9600,
+	"minimax-m2.7":        9600,
+	"minimax-m2.5":        9600,
+}
+
+// GetModelQuota 返回模型的官方月度请求配额
+// 大小写无关匹配；未配置的模型返回 0
+func GetModelQuota(model string) int {
+	return ModelRequestQuota[normalizeModelName(model)]
+}
+
+// normalizeModelName 将模型名归一化为小写 + 连字符格式，用于大小写无关匹配
+// 例如 "GLM-5.2" → "glm-5.2", "Kimi K2.7 Code" → "kimi k2.7 code"
+func normalizeModelName(model string) string {
+	return strings.ToLower(strings.TrimSpace(model))
+}
+
 // EstimateCost 估算单次请求的花费（含缓存）
 func EstimateCost(model string, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens int) float64 {
-	price, ok := ModelPrices[model]
+	price, ok := ModelPrices[normalizeModelName(model)]
 	if !ok {
 		price = ModelPrices["default"]
 	}
@@ -116,4 +173,12 @@ func EstimateSpendingUsage(totalCost float64) PlanUsage {
 		}
 	}
 	return usage
+}
+
+// GetProvider 返回模型对应的提供商名称
+func GetProvider(model string) string {
+	if price, ok := ModelPrices[normalizeModelName(model)]; ok {
+		return price.Provider
+	}
+	return "Unknown"
 }

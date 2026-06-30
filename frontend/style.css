@@ -2410,6 +2410,217 @@ input::placeholder { color: var(--text-2); font-weight: 400; }
 .quota-time { font-size: 12px; color: var(--text-muted, #8b949e); }
 
 
+/* ── Model usage cards (per provider) ── */
+.dashboard-model-section {
+    margin-top: 20px;
+    width: 100%;
+}
+.dashboard-model-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 0 4px;
+}
+.dashboard-model-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-0);
+    margin: 0;
+    letter-spacing: -0.2px;
+}
+.dashboard-model-subtitle {
+    font-size: 12px;
+    color: var(--text-2);
+    font-weight: 500;
+}
+#dashboard-model-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    width: 100%;
+}
+.model-card {
+    background: var(--bg-1);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    min-height: 110px;
+    box-shadow: var(--shadow);
+    transition: all 0.3s var(--ease);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.model-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 4px; height: 100%;
+    background: var(--model-accent, var(--accent));
+    opacity: 0.85;
+}
+.model-card:hover {
+    border-color: var(--border-hover);
+    box-shadow: var(--shadow-md), 0 0 12px var(--model-accent-soft, var(--accent-soft));
+    transform: translateY(-2px);
+}
+.model-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.model-card-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-0);
+    letter-spacing: -0.1px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.model-card-name .model-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--model-accent, var(--accent));
+    flex-shrink: 0;
+}
+.model-card-count {
+    font-size: 11px;
+    color: var(--text-2);
+    font-weight: 500;
+    background: var(--surface);
+    padding: 2px 7px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+/* Horizontal bar chart (侧躺柱状图) */
+.model-card-bar {
+    height: 22px;
+    background: var(--surface);
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    margin-top: 4px;
+    border: 1px solid var(--border);
+    transition: width 0.5s ease;
+    min-width: 12%;
+}
+.model-card-bar-used {
+    height: 100%;
+    background: linear-gradient(90deg, var(--model-accent, var(--accent)) 0%, var(--model-accent, var(--accent)) 100%);
+    transition: width 0.5s ease;
+    position: relative;
+}
+.model-card-bar-used.critical {
+    background: linear-gradient(90deg, #ef4444 0%, #f85149 100%);
+}
+.model-card-bar-remain {
+    height: 100%;
+    background: repeating-linear-gradient(
+        45deg,
+        var(--model-accent-soft, rgba(99,102,241,0.18)),
+        var(--model-accent-soft, rgba(99,102,241,0.18)) 4px,
+        transparent 4px,
+        transparent 8px
+    );
+    transition: width 0.5s ease;
+}
+.model-card-legend {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 11.5px;
+    color: var(--text-2);
+    margin-top: 2px;
+}
+.model-card-legend-used,
+.model-card-legend-remain {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-variant-numeric: tabular-nums;
+}
+.model-card-legend strong {
+    color: var(--text-0);
+    font-weight: 700;
+}
+.model-card-legend-remain.low strong {
+    color: #f85149;
+}
+.legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.legend-dot.used {
+    background: var(--model-accent, var(--accent));
+}
+.legend-dot.remain {
+    background: var(--surface);
+    border: 1px dashed var(--model-accent, var(--accent));
+}
+.model-card-total {
+    font-size: 11px;
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+    margin-top: 2px;
+}
+.model-card-total strong {
+    color: var(--text-0);
+    font-weight: 700;
+}
+.model-card-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 28px 16px;
+    color: var(--text-2);
+    font-size: 13px;
+    font-style: italic;
+    background: var(--bg-1);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+}
+.model-card-skeleton {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    min-height: 110px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+}
+
+/* Per-provider accent colors */
+.model-card[data-provider="Moonshot"]  { --model-accent: #6366f1; --model-accent-soft: rgba(99,102,241,0.18); }
+.model-card[data-provider="Alibaba"]   { --model-accent: #f59e0b; --model-accent-soft: rgba(245,158,11,0.18); }
+.model-card[data-provider="DeepSeek"]  { --model-accent: #10b981; --model-accent-soft: rgba(16,185,129,0.18); }
+.model-card[data-provider="Zhipu"]     { --model-accent: #06b6d4; --model-accent-soft: rgba(6,182,212,0.18); }
+.model-card[data-provider="Hunyuan"]   { --model-accent: #ec4899; --model-accent-soft: rgba(236,72,153,0.18); }
+.model-card[data-provider="MiMo"]      { --model-accent: #8b5cf6; --model-accent-soft: rgba(139,92,246,0.18); }
+.model-card[data-provider="MiniMax"]   { --model-accent: #ef4444; --model-accent-soft: rgba(239,68,68,0.18); }
+.model-card[data-provider="Unknown"],
+.model-card[data-provider="Other"]     { --model-accent: #6b7280; --model-accent-soft: rgba(107,114,128,0.18); }
+
+@media (max-width: 900px) {
+    #dashboard-model-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+}
+@media (max-width: 600px) {
+    #dashboard-model-grid { grid-template-columns: 1fr; }
+}
+
+
 /* ══════════════════════════════════════════════════════
    Traffic Dashboard — 多巴胺配色，不受主题色限制
    ══════════════════════════════════════════════════════ */

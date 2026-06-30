@@ -49,7 +49,11 @@ type SummaryTotals struct {
 
 type ModelStat struct {
 	Name        string  `json:"name"`
+	Provider    string  `json:"provider"`
 	Requests    int     `json:"requests"`
+	TotalRequests int   `json:"total_requests"`
+	RemainingRequests int `json:"remaining_requests"`
+	UsedPct     float64 `json:"used_pct"`
 	InputTokens int64   `json:"input_tokens"`
 	OutputTokens int64  `json:"output_tokens"`
 	CacheTokens int64   `json:"cache_tokens"`
@@ -57,6 +61,22 @@ type ModelStat struct {
 	Cost        float64 `json:"cost_usd"`
 	Pct         float64 `json:"pct"`
 	CacheHitRate float64 `json:"cache_hit_rate"`
+}
+
+// ProviderStat 按提供商聚合的统计信息
+type ProviderStat struct {
+	Provider      string  `json:"provider"`
+	Requests      int     `json:"requests"`
+	TotalRequests int     `json:"total_requests"`     // 估算总请求数（已用+剩余）
+	RemainingRequests int `json:"remaining_requests"` // 剩余请求数（按月度额度估算）
+	UsedPct       float64 `json:"used_pct"`           // 已用百分比 0-100
+	InputTokens   int64   `json:"input_tokens"`
+	OutputTokens  int64   `json:"output_tokens"`
+	TotalTokens   int64   `json:"total_tokens"`
+	Cost          float64 `json:"cost_usd"`
+	Pct           float64 `json:"pct"`
+	ModelCount    int     `json:"model_count"`
+	TopModel      string  `json:"top_model"`
 }
 
 type ClientStat struct {
@@ -117,12 +137,84 @@ func (s *Server) apiStatsModels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"models": models})
 }
 
+// apiStatsByProvider 按提供商聚合模型统计，用于首页模型卡片展示
+func (s *Server) apiStatsByProvider(w http.ResponseWriter, r *http.Request) {
+	days := parseIntParam(r, "days", 7)
+	entries := s.readJSONLLogs(days)
+	if len(entries) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"providers":    []ProviderStat{},
+			"plan_usage":   pricing.EstimateSpendingUsage(0),
+		})
+		return
+	}
+	models := modelBreakdown(entries)
+	providers := aggregateByProvider(models)
+	totalCost := 0.0
+	for _, ms := range models {
+		totalCost += ms.Cost
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"providers":    providers,
+		"plan_usage":   pricing.EstimateSpendingUsage(totalCost),
+	})
+}
+
+// apiStatsModelUsage 返回每个具体模型的请求数与剩余请求数，用于首页模型柱状图
+// 配额来源: pricing.ModelRequestQuota（官方给定，硬编码，不计算）
+func (s *Server) apiStatsModelUsage(w http.ResponseWriter, r *http.Request) {
+	days := parseIntParam(r, "days", 7)
+	entries := s.readJSONLLogs(days)
+	if len(entries) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"models":      []ModelStat{},
+			"plan_usage":  pricing.EstimateSpendingUsage(0),
+		})
+		return
+	}
+	models := modelBreakdown(entries)
+
+	// 给每个模型赋值官方配额、剩余请求数、已用百分比
+	for i := range models {
+		ms := &models[i]
+		quota := pricing.GetModelQuota(ms.Name)
+		ms.TotalRequests = quota
+		ms.RemainingRequests = quota - ms.Requests
+		if ms.RemainingRequests < 0 {
+			ms.RemainingRequests = 0
+		}
+		if quota > 0 {
+			ms.UsedPct = float64(ms.Requests) / float64(quota) * 100
+			if ms.UsedPct > 100 {
+				ms.UsedPct = 100
+			}
+		} else {
+			// 官方未给配额的模型，无法计算余量
+			ms.TotalRequests = ms.Requests
+			ms.UsedPct = 0
+		}
+	}
+
+	// 总成本仅用于 plan_usage（额度条展示）
+	var totalCost float64
+	for i := range models {
+		totalCost += models[i].Cost
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"models":      models,
+		"plan_usage":  pricing.EstimateSpendingUsage(totalCost),
+	})
+}
+
 // ── 公共方法，供前端路由注册 ──
 
 func (s *Server) registerStatsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/ocgt/api/stats/summary", s.apiStatsSummary)
 	mux.HandleFunc("/ocgt/api/stats/trend", s.apiStatsTrend)
 	mux.HandleFunc("/ocgt/api/stats/models", s.apiStatsModels)
+	mux.HandleFunc("/ocgt/api/stats/providers", s.apiStatsByProvider)
+	mux.HandleFunc("/ocgt/api/stats/models/usage", s.apiStatsModelUsage)
 }
 
 // ── 辅助函数 ──
@@ -270,8 +362,8 @@ func aggregateStats(entries []requestLogEntry, days int) StatsSummary {
 		result.Summary.TotalTokens += int64(e.TotalTokens)
 		result.Summary.AvgLatencyMs += parseDurationFloat(e.Duration)
 
-		// By model
-		model := e.Model
+		// By model — normalize to lowercase for case-insensitive grouping
+		model := strings.ToLower(strings.TrimSpace(e.Model))
 		if model == "" {
 			model = "unknown"
 		}
@@ -418,7 +510,7 @@ func dailyTrend(entries []requestLogEntry, days int, granularity string) []Daily
 func modelBreakdown(entries []requestLogEntry) []ModelStat {
 	modelMap := make(map[string]*modelBreakdownAccum)
 	for _, e := range entries {
-		model := e.Model
+		model := strings.ToLower(strings.TrimSpace(e.Model))
 		if model == "" {
 			model = "unknown"
 		}
@@ -451,6 +543,7 @@ func modelBreakdown(entries []requestLogEntry) []ModelStat {
 		}
 		result = append(result, ModelStat{
 			Name:        ms.Name,
+			Provider:    pricing.GetProvider(ms.Name),
 			Requests:    ms.Requests,
 			InputTokens: ms.InputTokens,
 			OutputTokens: ms.OutputTokens,
@@ -477,6 +570,91 @@ type modelBreakdownAccum struct {
 	CacheCreationTokens int64
 	TotalTokens       int64
 	Cost              float64
+}
+
+// aggregateByProvider 将按模型的统计聚合为按提供商的统计
+// 并基于月度额度估算每个提供商的总请求数与剩余请求数
+func aggregateByProvider(models []ModelStat) []ProviderStat {
+	providerMap := make(map[string]*ProviderStat)
+	for _, ms := range models {
+		provider := ms.Provider
+		if provider == "" {
+			provider = "Other"
+		}
+		if _, ok := providerMap[provider]; !ok {
+			providerMap[provider] = &ProviderStat{Provider: provider, TopModel: ms.Name}
+		}
+		ps := providerMap[provider]
+		ps.Requests += ms.Requests
+		ps.InputTokens += ms.InputTokens
+		ps.OutputTokens += ms.OutputTokens
+		ps.TotalTokens += ms.TotalTokens
+		ps.Cost += ms.Cost
+		ps.ModelCount++
+		// TopModel 是该提供商下请求数最多的模型（models 已按 TotalTokens 排序）
+	}
+
+	// 月度额度上限（OpenCode Go 套餐）
+	monthlyLimit := 60.0
+	for _, sl := range pricing.SpendingLimits {
+		if sl.Label == "每月限制" {
+			monthlyLimit = sl.Limit
+		}
+	}
+
+	// 总成本
+	var totalCost float64
+	for _, ps := range providerMap {
+		totalCost += ps.Cost
+	}
+	// 月度剩余额度
+	monthlyRemaining := monthlyLimit - totalCost
+	if monthlyRemaining < 0 {
+		monthlyRemaining = 0
+	}
+
+	var totalTokens float64
+	for _, ps := range providerMap {
+		totalTokens += float64(ps.TotalTokens)
+	}
+
+	var result []ProviderStat
+	for _, ps := range providerMap {
+		if totalTokens > 0 {
+			ps.Pct = float64(ps.TotalTokens) / totalTokens * 100
+		}
+		// 估算剩余请求数：如果剩余额度全部用于该提供商，能发多少请求
+		// 每请求平均成本 = 该提供商总成本 / 该提供商总请求数
+		// 剩余请求数 = 月度剩余额度 / 每请求平均成本
+		if ps.Cost > 0 && ps.Requests > 0 {
+			perRequestCost := ps.Cost / float64(ps.Requests)
+			remaining := int(monthlyRemaining / perRequestCost)
+			if remaining < 0 {
+				remaining = 0
+			}
+			ps.RemainingRequests = remaining
+			ps.TotalRequests = ps.Requests + remaining
+			if ps.TotalRequests > 0 {
+				ps.UsedPct = float64(ps.Requests) / float64(ps.TotalRequests) * 100
+				if ps.UsedPct > 100 {
+					ps.UsedPct = 100
+				}
+			}
+		} else {
+			// 该提供商无成本记录（免费或未计费），无法估算剩余
+			ps.RemainingRequests = 0
+			ps.TotalRequests = ps.Requests
+			if ps.Requests > 0 {
+				ps.UsedPct = 100
+			}
+		}
+		result = append(result, *ps)
+	}
+	// 按请求数降序
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Requests > result[j].Requests
+	})
+	return result
 }
 
 func parseDurationFloat(str string) float64 {

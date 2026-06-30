@@ -18,11 +18,15 @@ let MODEL_REGISTRY = [
 
     // { id, label, recommended?, category }
 
+    { id: 'kimi-k2.7-code', label: 'Kimi K2.7 Code', recommended: true, category: 'Kimi' },
+
     { id: 'kimi-k2.6', label: 'kimi-k2.6', recommended: true, category: 'Kimi' },
 
     { id: 'kimi-k2.5', label: 'kimi-k2.5', recommended: false, category: 'Kimi' },
 
     { id: 'qwen3.7-max', label: 'Qwen3.7 Max', recommended: true, category: 'Qwen' },
+
+    { id: 'qwen3.7-plus', label: 'Qwen3.7 Plus', recommended: false, category: 'Qwen' },
 
     { id: 'qwen3.6-plus', label: 'qwen3.6-plus', recommended: false, category: 'Qwen' },
 
@@ -32,7 +36,9 @@ let MODEL_REGISTRY = [
 
     { id: 'deepseek-v4-flash', label: 'deepseek-v4-flash', recommended: false, category: 'DeepSeek' },
 
-    { id: 'glm-5.1', label: 'glm-5.1', recommended: true, category: 'Zhipu' },
+    { id: 'glm-5.2', label: 'GLM-5.2', recommended: true, category: 'Zhipu' },
+
+    { id: 'glm-5.1', label: 'glm-5.1', recommended: false, category: 'Zhipu' },
 
     { id: 'glm-5', label: 'glm-5', recommended: false, category: 'Zhipu' },
 
@@ -41,6 +47,8 @@ let MODEL_REGISTRY = [
     { id: 'mimo-v2.5-pro', label: 'mimo-v2.5-pro', recommended: false, category: 'MiMo' },
 
     { id: 'mimo-v2.5', label: 'mimo-v2.5', recommended: false, category: 'MiMo' },
+
+    { id: 'minimax-m3', label: 'MiniMax M3', recommended: false, category: 'MiniMax' },
 
     { id: 'minimax-m2.7', label: 'minimax-m2.7', recommended: false, category: 'MiniMax' },
 
@@ -157,7 +165,15 @@ const i18n = {
         dash_cli: "CLI",
         dash_vscode: "VS Code",
         dash_claude_desktop: "Claude Desktop",
-        lbl_config_path: "本地配置文件路径",
+        dash_model_usage: "模型请求统计",
+        dash_model_usage_desc: "近 7 天各模型请求数与套餐余量",
+        dash_model_requests: "请求",
+        dash_model_used: "已用",
+        dash_model_used_short: "已用",
+        dash_model_remaining: "剩余",
+        dash_model_total: "总额",
+        dash_model_empty: "暂无请求记录，发起请求后将显示模型统计",
+        dash_model_no_remaining: "—",        lbl_config_path: "本地配置文件路径",
         lbl_desktop_config: "Claude Code settings 配置",
         lbl_last_updated: "刚刚更新",
         btn_open_folder: "打开所在文件夹",
@@ -554,6 +570,15 @@ const i18n = {
         dash_cli: "CLI",
         dash_vscode: "VS Code",
         dash_claude_desktop: "Claude Desktop",
+        dash_model_usage: "Model Request Stats",
+        dash_model_usage_desc: "Request counts and plan remaining per model (last 7 days)",
+        dash_model_requests: "requests",
+        dash_model_used: "Used",
+        dash_model_used_short: "used",
+        dash_model_remaining: "Remaining",
+        dash_model_total: "Total",
+        dash_model_empty: "No request records yet. Model stats will appear after requests are made.",
+        dash_model_no_remaining: "—",
         lbl_config_path: "Local Config Path",
         lbl_desktop_config: "Claude Code settings Config",
         lbl_last_updated: "Updated just now",
@@ -4542,6 +4567,80 @@ function buildQuotaRow(name, cls, pct, reset) {
     </div>`;
 }
 
+// Model usage cards: fetch per-model stats and render dashboard cards
+let modelStatsInterval = null;
+
+async function fetchAndRenderModelStats() {
+    const grid = document.getElementById('dashboard-model-grid');
+    if (!grid) return;
+    try {
+        const resp = await apiFetch('/ocgt/api/stats/models/usage?days=7', null, 10000);
+        if (!resp.ok) {
+            grid.innerHTML = `<div class="model-card-empty">${t('dash_model_empty')}</div>`;
+            return;
+        }
+        const data = await resp.json();
+        const models = (data && data.models) || [];
+        if (models.length === 0) {
+            grid.innerHTML = `<div class="model-card-empty">${t('dash_model_empty')}</div>`;
+            return;
+        }
+
+        // 取所有模型的 max total_requests，用于横向柱状图按比例显示长度
+        const maxTotal = models.reduce((m, x) => Math.max(m, x.total_requests || 0), 0) || 1;
+
+        let html = '';
+        for (const x of models) {
+            const modelName = x.name || 'unknown';
+            const providerName = x.provider || 'Other';
+            const used = x.requests || 0;
+            const total = x.total_requests || used;
+            const remaining = x.remaining_requests || 0;
+            const usedPct = x.used_pct || 0;
+            // 横向柱状图按最大 total_requests 归一化宽度
+            const fullWidth = maxTotal > 0 ? (total / maxTotal * 100) : 0;
+            // 已用部分在柱条内的占比
+            const usedInBar = total > 0 ? (used / total * 100) : 0;
+            const remainInBar = 100 - usedInBar;
+            const remainLow = remaining === 0 && used > 0;
+            const remainCritical = usedPct >= 80;
+
+            html += `<div class="model-card" data-provider="${escHtml(providerName)}">
+                <div class="model-card-header">
+                    <span class="model-card-name"><span class="model-dot"></span>${escHtml(modelName)}</span>
+                    <span class="model-card-count">${escHtml(providerName)}</span>
+                </div>
+                <div class="model-card-bar" style="width:${fullWidth}%">
+                    <div class="model-card-bar-used${remainCritical ? ' critical' : ''}" style="width:${usedInBar}%"></div>
+                    <div class="model-card-bar-remain" style="width:${remainInBar}%"></div>
+                </div>
+                <div class="model-card-legend">
+                    <span class="model-card-legend-used">
+                        <span class="legend-dot used"></span>${t('dash_model_used')} <strong>${used}</strong>
+                    </span>
+                    <span class="model-card-legend-remain${remainLow ? ' low' : ''}">
+                        <span class="legend-dot remain"></span>${t('dash_model_remaining')} <strong>${remaining}</strong>
+                    </span>
+                </div>
+                <div class="model-card-total">
+                    ${t('dash_model_total')}: <strong>${total}</strong> · ${usedPct.toFixed(0)}% ${t('dash_model_used_short')}
+                </div>
+            </div>`;
+        }
+        grid.innerHTML = html;
+    } catch (e) {
+        console.error('Failed to fetch model stats:', e);
+        grid.innerHTML = `<div class="model-card-empty">${t('dash_model_empty')}</div>`;
+    }
+}
+
+function formatTokensCompact(n) {
+    if (!n || n <= 0) return '0';
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+    return String(n);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 
     cacheDom();
@@ -4587,9 +4686,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const quotaBtn = document.getElementById('btn-refresh-quota');
     if (quotaBtn) quotaBtn.addEventListener('click', fetchAndRenderQuota);
 
+    // Model usage cards: fetch on startup and every 30s
+    async function initModelStatsPolling() {
+        await fetchAndRenderModelStats();
+        modelStatsInterval = setInterval(fetchAndRenderModelStats, 30000);
+    }
+    setTimeout(initModelStatsPolling, 2000);
+
     // Clean up interval on page unload
     window.addEventListener('beforeunload', () => {
         clearInterval(pollInterval);
         if (quotaInterval) clearInterval(quotaInterval);
+        if (modelStatsInterval) clearInterval(modelStatsInterval);
     });
 });
